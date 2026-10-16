@@ -1,0 +1,6 @@
+你需要的只有三步：
+1. GitHub 新建 Private 私有仓库，名字 3d-asset-library。
+2. 把本 ZIP 解压到 D:\Codex\3D-Asset-Library。
+3. 在 Windows Codex 中打开这个目录，发送：
+   “先读 AGENTS.md 和 CODEX_交接说明.md。把当前项目接入我新建的私有 GitHub 仓库 https://github.com/lvbihiu-ctrl/3d-asset-library，不上传客户素材。先检查 .gitignore，确认远端是 Private，完成首次安全提交，并告诉我仓库链接。暂不新增功能。”
+之后开发只维护这一份项目，不再重复下载许多独立 HTML。
