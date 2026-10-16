@@ -12,10 +12,9 @@
 
 ## GitHub 协作
 
-用户会在当前已连接 GitHub 账号 `lvbihiu-ctrl` 下创建私人仓库：`https://github.com/lvbihiu-ctrl/3d-asset-library`。**仓库尚未确认创建，操作前先检查存在且为 Private。**
-拿到完整仓库 URL 后，由 Codex 使用现有已授权的 Git 身份把此目录设为 Git 仓库、检查 `.gitignore`、确认仓库为 Private、执行初次提交和推送。不要让用户手写脚本；认证失败时请求用户完成 GitHub 的正常授权操作，绝不能让用户把令牌发在聊天里。
+GitHub 私有仓库已经建立：`https://github.com/lvbihiu-ctrl/3d-asset-library`。本地目录已经初始化为 Git 仓库，`main` 分支已与远端 `origin/main` 完成首次同步，并保留远端原有历史。
 
-首次提交前请列出暂存文件清单，确认只含程序/Markdown/命令和脚本，没有用户真实素材。若远端 README 已初始化，先安全合并历史，不用强制 push。
+后续修改前先读取 `AGENTS.md`，检查本地与远端状态；提交前列出暂存文件清单，确认只含程序、Markdown、命令和脚本，没有客户模型、贴图、缓存、测试素材或敏感信息。使用普通提交和推送，不强制覆盖远端历史。认证失败时请求用户完成 GitHub 的正常授权操作，绝不能让用户把令牌发在聊天里。
 
 ## 手动验收
 
