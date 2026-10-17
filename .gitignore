@@ -61,6 +61,11 @@ assets/
 素材/
 项目文件/
 
+# Native launcher build outputs
+desktop-updates/native/launcher/bin/
+desktop-updates/native/launcher/obj/
+desktop-updates/native/launcher/publish/
+
 # Secrets and machine-local credentials
 .env
 .env.*
