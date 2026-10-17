@@ -1,7 +1,7 @@
 {
-    "schema":  1,
-    "version":  "0.1.3",
-    "notes":  "修复 Windows EXE 被多个旧进程锁定后无法更新的问题；新增单实例保护和退出后替换。",
-    "scriptUrl":  "https://raw.githubusercontent.com/lvbihiu-ctrl/3d-asset-library/d6e7dbef179d8e5bfbee957dd17dcaf913da998b/desktop-updates/native/app-v0.1.3.ps1",
-    "sha256":  "b1b85d3b3e96dc4fb7a4ef684cc0388e6cf4298724867e9d3944c3eebb2bbfa0"
+  "schema": 1,
+  "version": "0.1.5",
+  "notes": "新增白天/夜晚模式切换，点击后立即切换并记住选择；保留原生拖拽、封面、索引与素材路径。",
+  "scriptUrl": "https://raw.githubusercontent.com/lvbihiu-ctrl/3d-asset-library/37221ac34c1b5a8b79aae859f823b845429d6545/desktop-updates/native/app-v0.1.5.ps1",
+  "sha256": "0bbe57c13a05aa38fa320e71ad7cd80400928b4040c9822b4829e3254a4c24dd"
 }
