@@ -553,6 +553,22 @@ function Refresh-PreviewNav {
       $button.Add_Click({param($sender,$e) $script:navFilter=[string]$sender.Tag;$script:cardOffset=0;Refresh-Cards;Refresh-PreviewNav})
       $script:nav.Controls.Add($button)
     }
+    $newCategory=New-Object Windows.Forms.Button
+    $newCategory.Text='＋ 新建虚拟分类';$newCategory.Width=180;$newCategory.Height=34
+    $newCategory.Margin=[Windows.Forms.Padding]::new(5,8,4,3)
+    $newCategory.Add_Click({
+      try{
+        Add-Type -AssemblyName Microsoft.VisualBasic
+        $name=[Microsoft.VisualBasic.Interaction]::InputBox('分类只保存在本机，不移动磁盘上的模型。','新建虚拟分类','').Trim()
+        if(!$name){return}
+        if($name.Length -gt 25 -or $script:categories -contains $name){Show-Problem '分类名重复或超过25字。';return}
+        $script:categories+=,$name
+        Save-Categories
+        Refresh-PreviewNav
+        Set-Status ('已创建虚拟分类：'+$name)
+      }catch{Show-Problem ('新建分类失败：'+$_.Exception.Message)}
+    })
+    $script:nav.Controls.Add($newCategory)
     $note=New-Object Windows.Forms.Label;$note.Width=180;$note.Height=84
     $note.Text='虚拟分类保存在本机，真实目录只读。不会移动原始模型。'
     $script:nav.Controls.Add($note)
