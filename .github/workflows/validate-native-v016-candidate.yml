@@ -53,7 +53,7 @@ jobs:
           if (!(Test-Path $exe)) { $exe = 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' }
           $stdout = Join-Path $env:RUNNER_TEMP 'smoke-out.txt'
           $stderr = Join-Path $env:RUNNER_TEMP 'smoke-err.txt'
-          $p = Start-Process -FilePath $exe -ArgumentList @('-NoLogo','-NoProfile','-STA','-ExecutionPolicy','Bypass','-File',"'$((Resolve-Path 'desktop-updates/native/app-v0.1.6.ps1').Path)'") -Wait -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          $p = Start-Process -FilePath $exe -ArgumentList @('-NoLogo','-NoProfile','-STA','-ExecutionPolicy','Bypass','-File','"' + (Resolve-Path 'desktop-updates/native/app-v0.1.6.ps1').Path + '"') -Wait -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
           $output = Get-Content $stdout -Raw -ErrorAction SilentlyContinue
           $errors = Get-Content $stderr -Raw -ErrorAction SilentlyContinue
           Write-Host $output
