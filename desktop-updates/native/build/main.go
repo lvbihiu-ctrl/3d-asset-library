@@ -17,7 +17,7 @@ import (
 var resources embed.FS
 
 const installDir = "D:\\Codex\\3D-Asset-Library-EXE"
-const exeName = "3D素材管理器.exe"
+const exeName = "3D素材管理器-v0.1.1.exe"
 
 func msg(message string) {
  user32:=syscall.NewLazyDLL("user32.dll")
