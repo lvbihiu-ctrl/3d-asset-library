@@ -1,0 +1,40 @@
+name: Validate native v0.1.5 PowerShell
+
+on:
+  push:
+    branches:
+      - codex/theme-toggle-v0.1.5
+    paths:
+      - 'desktop-updates/native/app-v0.1.5.ps1'
+      - '.github/workflows/validate-native-v015.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  parse:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: PowerShell parse + theme wiring validation
+        shell: pwsh
+        run: |
+          $file=(Resolve-Path 'desktop-updates/native/app-v0.1.5.ps1').Path
+          $tokens=$null; $parseErrors=$null
+          $null=[System.Management.Automation.Language.Parser]::ParseFile($file,[ref]$tokens,[ref]$parseErrors)
+          if($parseErrors.Count -gt 0) {
+            $parseErrors | ForEach-Object { Write-Host $_.Message }
+            throw "PowerShell parse failed"
+          }
+          $s=[IO.File]::ReadAllText($file)
+          @(
+            'function Apply-Theme',
+            '$theme.Add_Click',
+            "function Scan-Folder",
+            "function Continue-Drag",
+            "function Cover-FromClipboard",
+            '$updates.Add_Click',
+            "0.1.5"
+          ) | ForEach-Object { if(!$s.Contains($_)){throw "Missing: $_"} }
+          Write-Host 'Windows PowerShell syntax and key entry points confirmed; WinForms runtime not executed.'
