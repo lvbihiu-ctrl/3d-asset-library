@@ -15,6 +15,17 @@ $script:coverMapPath = Join-Path $script:dataRoot 'covers.json'
 $script:settingsPath = Join-Path $script:installRoot 'settings.json'
 $script:manifestUrl = 'https://raw.githubusercontent.com/lvbihiu-ctrl/3d-asset-library/refs/heads/main/desktop-updates/native/latest.json'
 $script:version = '0.1.6'
+$script:smoke = ($env:ASSET_LIBRARY_SMOKE -eq '1')
+if($script:smoke){
+  $safe = Join-Path $env:TEMP 'AssetLibraryUI-SafeSmoke'
+  $script:installRoot = Join-Path $safe 'install'
+  $script:dataRoot = Join-Path $safe 'data'
+  $script:coverRoot = Join-Path $script:dataRoot 'covers'
+  $script:thumbRoot = Join-Path $script:dataRoot 'thumbs'
+  $script:catalogPath = Join-Path $script:dataRoot 'catalog.json'
+  $script:coverMapPath = Join-Path $script:dataRoot 'covers.json'
+  $script:settingsPath = Join-Path $script:installRoot 'settings.json'
+}
 $script:categoryPath=Join-Path $script:dataRoot 'ui-categories.v1.json'
 $script:categories=@('手机数码','场景搭建','灯具道具','材质','其他')
 $script:categoryMap=@{}
@@ -52,6 +63,7 @@ function Is-TexturePath([string]$path) {
   return ($name -match '(?i)(^|[._\- ])(albedo|basecolor|base_color|normal|roughness|metallic|metalness|bump|displacement|opacity|specular|ao|ambientocclusion|height|glossiness|反射|法线|粗糙度|金属度|置换)([._\- ]|$)')
 }
 function Show-Problem([string]$message){
+  if($script:smoke){throw $message}
   [void][Windows.Forms.MessageBox]::Show($message,'3D 素材管理器',[Windows.Forms.MessageBoxButtons]::OK,[Windows.Forms.MessageBoxIcon]::Warning)
 }
 function Set-Status([string]$value){$script:status.Text=$value;$script:status.Refresh()}
@@ -631,6 +643,11 @@ $form.Add_FormClosed({
 })
 try {
   Load-Covers;Load-Catalog;Load-Categories;Refresh-Cards;Refresh-PreviewNav;Apply-Theme
+  if($script:smoke){
+    if(!$script:gallery -or !$script:nav -or !$script:catPick){throw 'Smoke: missing widgets'}
+    Write-Host ('SMOKE_PASS: v'+$script:version+' assets='+$script:assets.Count+' nav='+$script:nav.Controls.Count)
+    return
+  }
   if($script:assets.Count){Set-Status ('已加载旧素材索引：'+$script:assets.Count+' 条。可继续选择文件夹重新扫描。')}
   [void]$form.ShowDialog()
 }catch{Show-Problem ('客户端发生错误：'+$_.Exception.Message)}
