@@ -1,0 +1,47 @@
+name: Validate native v0.1.6 candidate
+
+on:
+  push:
+    branches:
+      - codex/v016-ui-migration-preview
+    paths:
+      - 'desktop-updates/native/app-v0.1.6.ps1'
+      - '.github/workflows/validate-native-v016-candidate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  syntax-and-regression:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: PowerShell parse, compatibility and version checks
+        shell: pwsh
+        run: |
+          $file = (Resolve-Path 'desktop-updates/native/app-v0.1.6.ps1').Path
+          $tok=$null; $err=$null
+          $null=[System.Management.Automation.Language.Parser]::ParseFile($file,[ref]$tok,[ref]$err)
+          if ($err.Count) {
+            $err | ForEach-Object { Write-Host $_.ToString() }
+            throw "PowerShell parse failed"
+          }
+          $s=[IO.File]::ReadAllText($file)
+          @(
+            "0.1.6",
+            "function Load-Catalog",
+            "function Save-Catalog",
+            "function Load-Covers",
+            "function Save-Covers",
+            "function Continue-Drag",
+            "SetFileDropList",
+            "function Cover-FromClipboard",
+            "function Sort-ByImage",
+            "function Refresh-PreviewNav",
+            "function Layout-Masonry",
+            "function Save-Categories",
+            '$updates.Add_Click',
+            "ui-categories.v1.json"
+          ) | ForEach-Object { if(!$s.Contains($_)){throw "Required entry missing: $_"} }
+          Write-Host 'PowerShell syntax valid; key paths present. This is NOT C4D or GUI runtime validation.'
