@@ -642,10 +642,42 @@ $form.Add_FormClosed({
   foreach($card in @($script:cardControls)){foreach($c in @($card.Controls)){if($c -is [Windows.Forms.PictureBox] -and $c.Image){$c.Image.Dispose()}}}
 })
 try {
+  if($script:smoke){
+    $fakeModels=Join-Path $script:dataRoot 'fixture-models'
+    [void](New-Item -ItemType Directory -Force -Path $fakeModels)
+    $fakeA=Join-Path $fakeModels 'demo_phone_a.c4d'
+    $fakeB=Join-Path $fakeModels 'demo_phone_b.fbx'
+    [IO.File]::WriteAllText($fakeA,'synthetic smoke data - not a real model')
+    [IO.File]::WriteAllText($fakeB,'synthetic smoke data - not a real model')
+    $bmp=New-Object Drawing.Bitmap(160,110)
+    $gfx=[Drawing.Graphics]::FromImage($bmp)
+    try{$gfx.Clear([Drawing.Color]::CornflowerBlue);$bmp.Save((Join-Path $script:coverRoot 'synthetic.jpg'),[Drawing.Imaging.ImageFormat]::Jpeg)}
+    finally{$gfx.Dispose();$bmp.Dispose()}
+    $idA=Get-Key $fakeA.ToLowerInvariant();$idB=Get-Key $fakeB.ToLowerInvariant()
+    $fixture=@(
+      [pscustomobject]@{id=$idA;name='演示手机A';kind='模型';ext='C4D';rel='手机/演示手机A.c4d';full=$fakeA;preview='';bytes=10;changed='2026-01-01';resources=''},
+      [pscustomobject]@{id=$idB;name='演示手机B';kind='模型';ext='FBX';rel='手机/演示手机B.fbx';full=$fakeB;preview='';bytes=20;changed='2026-01-01';resources=''}
+    )
+    $script:assets=$fixture
+    $script:summary=@{root=$fakeModels;assetCount=2}
+    $script:covers=@{};$script:covers[$idA]='synthetic.jpg'
+    Save-Catalog;Save-Covers
+    $script:categoryMap=@{};$script:categoryMap[$idA]='手机数码'
+    Save-Categories
+    $script:assets=@();$script:covers=@{};$script:categoryMap=@{}
+  }
   Load-Covers;Load-Catalog;Load-Categories;Refresh-Cards;Refresh-PreviewNav;Apply-Theme
   if($script:smoke){
     if(!$script:gallery -or !$script:nav -or !$script:catPick){throw 'Smoke: missing widgets'}
-    Write-Host ('SMOKE_PASS: v'+$script:version+' assets='+$script:assets.Count+' nav='+$script:nav.Controls.Count)
+    if($script:assets.Count -ne 2){throw 'Smoke: expected two fixture models'}
+    if($script:gallery.Controls.Count -ne 2){throw 'Smoke: expected two cards'}
+    if($script:covers.Count -ne 1){throw 'Smoke: cover map not persisted'}
+    if((Category-For $script:assets[0]) -ne '手机数码'){throw 'Smoke: category mapping not persisted'}
+    $script:navFilter='cat:手机数码'
+    Refresh-Cards
+    if($script:gallery.Controls.Count -ne 1){throw 'Smoke: category filtering failed'}
+    $script:navFilter='all';Refresh-Cards
+    Write-Host ('SMOKE_PASS: v'+$script:version+' assets='+$script:assets.Count+' nav='+$script:nav.Controls.Count+' cover=1 category=1')
     return
   }
   if($script:assets.Count){Set-Status ('已加载旧素材索引：'+$script:assets.Count+' 条。可继续选择文件夹重新扫描。')}
