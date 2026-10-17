@@ -283,7 +283,7 @@ function Refresh-Cards {
 
 $form=New-Object Windows.Forms.Form
 $form.Text=('3D 素材管理器 · 原生 EXE v'+$script:version)
-$form.Width=1250;$form.Height=820;$form.MinimumSize=[Drawing.Size]::new(970,600)
+$form.Width=1250;$form.Height=820;$form.MinimumSize=[Drawing.Size]::new(1100,600)
 $form.StartPosition='CenterScreen'
 $form.BackColor=[Drawing.Color]::FromArgb(246,248,252)
 $form.Font=[Drawing.Font]::new('Microsoft YaHei UI',9)
