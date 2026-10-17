@@ -1,0 +1,57 @@
+name: Build Windows EXE (native test)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'desktop-updates/native/build/**'
+      - 'desktop-updates/native/v0.1.2/app.ps1'
+      - '.github/workflows/release-native-exe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - name: Validate embedded PowerShell syntax
+        shell: pwsh
+        run: |
+          $source = 'desktop-updates/native/v0.1.2/app.ps1'
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $source).Path, [ref]$tokens, [ref]$errors)
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
+          Write-Host 'Embedded PowerShell parses successfully.'
+      - name: Compile actual Windows application
+        shell: pwsh
+        run: |
+          Copy-Item 'desktop-updates/native/v0.1.2/app.ps1' 'desktop-updates/native/build/app.ps1' -Force
+          Push-Location 'desktop-updates/native/build'
+          go build -trimpath -ldflags="-H windowsgui -s -w" -o "$env:GITHUB_WORKSPACE/3DAssetLibrary-v0.1.2-Windows-x64.exe" main.go
+          Pop-Location
+          if (!(Test-Path '3DAssetLibrary-v0.1.2-Windows-x64.exe')) { throw 'Windows EXE not generated' }
+          Get-FileHash -Algorithm SHA256 '3DAssetLibrary-v0.1.2-Windows-x64.exe'
+      - name: Publish downloadable test executable
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = 'native-v0.1.2-github'
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag '3DAssetLibrary-v0.1.2-Windows-x64.exe' --clobber
+          } else {
+            gh release create $tag '3DAssetLibrary-v0.1.2-Windows-x64.exe' --title 'Native EXE v0.1.2 (Windows file-lock installer fix)' --notes 'Windows x64 test build; real-machine launch NOT verified. Installs versioned EXE and runtime side by side, avoiding replacement of already running older client. Windows/C4D real-machine run not yet verified. Download is provided to diagnose and test. Original assets are not included.' --prerelease --target "${{ github.sha }}"
+          }

@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "version": "0.2.1",
+  "notes": "桌面窗口更新：启动时优先使用 Microsoft Edge 独立应用窗口，不再打开普通浏览器标签；原有素材墙、封面、搜索、更新功能保留。原生拖拽接入正式素材墙尚未完成。",
+  "files": [
+    {
+      "path": "app/index.html",
+      "url": "https://raw.githubusercontent.com/lvbihiu-ctrl/3d-asset-library/45aefb8b55522ee796ed35b1a84009f3cdf4c40a/desktop-updates/v0.2.1/app/index.html",
+      "sha256": "205ff5bea5da0abcfde5cc8700f41c212bf680cbe8e3b89bd501db9c5edfe18f"
+    },
+    {
+      "path": "tools/start.ps1",
+      "url": "https://raw.githubusercontent.com/lvbihiu-ctrl/3d-asset-library/45aefb8b55522ee796ed35b1a84009f3cdf4c40a/desktop-updates/v0.2.1/tools/start.ps1",
+      "sha256": "107b46d9901fcebd2d05e66b4fbb247d663d4d187f9b338f2c7d227469317b58"
+    }
+  ]
+}
