@@ -1,0 +1,40 @@
+name: Validate native UI candidate
+
+on:
+  pull_request:
+    paths:
+      - 'desktop-updates/native/app-v0.1.4.ps1'
+      - '.github/workflows/validate-native-ui.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  powershell-parse:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse PowerShell and check UI invariants
+        shell: pwsh
+        run: |
+          $path = (Resolve-Path 'desktop-updates/native/app-v0.1.4.ps1').Path
+          $tokens = $null
+          $errors = $null
+          $ast = [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors)
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error ($_.Extent.Text + ': ' + $_.Message) }
+            throw 'PowerShell syntax errors found'
+          }
+          $code = [IO.File]::ReadAllText($path)
+          @(
+            "function Scan-Folder",
+            "function Begin-Drag",
+            "function Continue-Drag",
+            "function Cover-FromClipboard",
+            '$updates.Add_Click',
+            '$script:version = ''0.1.4'''
+          ) | ForEach-Object {
+            if (-not $code.Contains($_)) { throw "Missing preserved behavior: $_" }
+          }
+          Write-Host 'PowerShell syntax and preserved entry points OK. Windows UI runtime not tested.'
