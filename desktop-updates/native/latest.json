@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "version": "0.1.0",
+  "notes": "Windows 原生 EXE 首个测试版本。后续更新会在此发布经过 SHA256 校验的 app.ps1。",
+  "scriptUrl": "",
+  "sha256": ""
+}
