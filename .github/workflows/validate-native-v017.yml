@@ -1,0 +1,55 @@
+name: Validate cache-safe v0.1.7 updater
+
+on:
+  push:
+    branches:
+      - codex/fix-updater-cache-v017
+    paths:
+      - 'desktop-updates/native/app-v0.1.7.ps1'
+      - 'desktop-updates/native/tests/update-cache.test.ps1'
+      - '.github/workflows/validate-native-v017.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse PowerShell and protect old features
+        shell: pwsh
+        run: |
+          $file=(Resolve-Path 'desktop-updates/native/app-v0.1.7.ps1').Path
+          $tok=$null;$errorsFound=$null
+          $null=[Management.Automation.Language.Parser]::ParseFile($file,[ref]$tok,[ref]$errorsFound)
+          if($errorsFound.Count){$errorsFound|ForEach-Object{Write-Host $_};throw 'Syntax failure'}
+          $s=[IO.File]::ReadAllText($file)
+          @('0.1.7','function Get-FreshUpdateManifest','function Assert-UpdateManifest',
+            'function Scan-Folder','function Continue-Drag','SetFileDropList',
+            'function Cover-FromClipboard','function Sort-ByImage',
+            'function Save-Categories','function Layout-Masonry',
+            '$updates.Add_Click','override.backup.ps1'
+          )|ForEach-Object{if(!$s.Contains($_)){throw "Missing required feature $_"}}
+          Write-Host ('RELEASE_SHA256='+(Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash.ToLowerInvariant())
+          Write-Host ('RELEASE_BYTES='+(Get-Item -LiteralPath $file).Length)
+      - name: Updater stale-cache regression tests
+        shell: pwsh
+        run: |
+          & './desktop-updates/native/tests/update-cache.test.ps1'
+      - name: WinForms startup with synthetic models (isolated)
+        shell: pwsh
+        run: |
+          $env:ASSET_LIBRARY_SMOKE='1'
+          $exe='C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+          $out=Join-Path $env:RUNNER_TEMP 'app-out.txt'
+          $err=Join-Path $env:RUNNER_TEMP 'app-err.txt'
+          $file=(Resolve-Path 'desktop-updates/native/app-v0.1.7.ps1').Path
+          $argsList=@('-NoLogo','-NoProfile','-STA','-ExecutionPolicy','Bypass','-File','"'+$file+'"')
+          $process=Start-Process -FilePath $exe -ArgumentList $argsList -Wait -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+          $output=Get-Content -LiteralPath $out -Raw -ErrorAction SilentlyContinue
+          $errors=Get-Content -LiteralPath $err -Raw -ErrorAction SilentlyContinue
+          Write-Host $output
+          if($errors){Write-Host $errors}
+          if($process.ExitCode -ne 0 -or !$output.Contains('SMOKE_PASS:')){throw "Windows GUI smoke failed: $($process.ExitCode)"}
