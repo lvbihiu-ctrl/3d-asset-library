@@ -3,5 +3,5 @@
   "version": "0.1.7",
   "notes": "根治更新清单旧缓存：每次检查使用防缓存请求；Raw 未发现新版或失败时，经 GitHub Contents API 二次核验；无法确认时明确报错，不再误报最新版。保留 v0.1.6 的素材墙、分类、封面及 C4D 原生拖拽。",
   "scriptUrl": "https://raw.githubusercontent.com/lvbihiu-ctrl/3d-asset-library/cb0b47c7672409968e4b237f41495067c0b61366/desktop-updates/native/app-v0.1.7.ps1",
-  "sha256": "5ed67e446bfb105fa86c5bbd24fe5ba3c9154b04c90c6a6212736a6b842ea348"
+  "sha256": "f453c0ffa4f53a9b907e63320e906ac9dcc3e7a188e6ba389d0742a9d843225d"
 }
