@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "version": "0.1.5",
-  "notes": "新增白天/夜晚模式切换，点击后立即切换并记住选择；保留原生拖拽、封面、索引与素材路径。",
-  "scriptUrl": "https://raw.githubusercontent.com/lvbihiu-ctrl/3d-asset-library/37221ac34c1b5a8b79aae859f823b845429d6545/desktop-updates/native/app-v0.1.5.ps1",
-  "sha256": "0bbe57c13a05aa38fa320e71ad7cd80400928b4040c9822b4829e3254a4c24dd"
+  "version": "0.1.6",
+  "notes": "自动瀑布流素材墙、虚拟分类与原始文件夹导航、右侧详情；继续保留 C4D 原生拖拽、封面、截图相似搜索及一键更新。Windows CI 已验证脚本语法及模拟素材运行，C4D 实机拖拽仍待用户验证。",
+  "scriptUrl": "https://raw.githubusercontent.com/lvbihiu-ctrl/3d-asset-library/33a89d13dd6df23792b201dbc5f2fa12b9f919e3/desktop-updates/native/app-v0.1.6.ps1",
+  "sha256": "0ae3ce995cfc3b0f996eee2561e81b705ffea6a07b7f8365bc7774b7da819683"
 }
