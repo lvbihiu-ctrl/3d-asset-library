@@ -16,9 +16,10 @@
 1. 不修改旧版发布脚本，不改已发布 Commit；新功能或修复写入新的 `app-vX.Y.Z.ps1`。
 2. 运行 Windows PowerShell 的语法、原生控件启动、旧素材索引/封面，以及模拟更新器缓存故障测试。
 3. 合并新脚本到 main，引用**那个合并 Commit**作为 `scriptUrl`，依据文件最终字节计算 SHA256。
-4. 最后才更新 `latest.json`，确保 version、URL、sha256 一致。
-5. GitHub Actions `Verify native OTA release integrity` 会核验：固定 Commit URL、本地版本脚本、远端下载字节、SHA256 和内置版本号，不匹配就失败。
-6. 仍必须在 Windows 真机验收原生 C4D 拖拽与 Shift 合并；CI 无法替代用户软件环境。
+4. **哈希必须按 GitHub 仓库 Raw 原始字节计算**（UTF-8 BOM 与 LF 均计入）。Windows Git 检出可能按 `core.autocrlf` 将 LF 转为 CRLF，Windows 工作目录的 `Get-FileHash` 值不能直接用在 OTA manifest；之前 v0.1.6/v0.1.7 曾因此出现校验不一致。
+5. 最后才更新 `latest.json`，确保 version、URL、sha256 一致。
+6. GitHub Actions `Verify native OTA release integrity` 会核验：固定 Commit URL、本地版本脚本、远端下载字节、SHA256 和内置版本号，不匹配就失败。
+7. 仍必须在 Windows 真机验收原生 C4D 拖拽与 Shift 合并；CI 无法替代用户软件环境。
 
 ### 老版本的过渡
 - v0.1.5/v0.1.6 已经含有旧更新检查代码。**单纯修改 GitHub 无法远程替换它们**。
