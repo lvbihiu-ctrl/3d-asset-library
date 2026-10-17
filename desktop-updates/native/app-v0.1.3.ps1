@@ -13,7 +13,7 @@ $script:thumbRoot = Join-Path $script:dataRoot 'thumbs'
 $script:catalogPath = Join-Path $script:dataRoot 'catalog.json'
 $script:coverMapPath = Join-Path $script:dataRoot 'covers.json'
 $script:settingsPath = Join-Path $script:installRoot 'settings.json'
-$script:manifestUrl = 'https://raw.githubusercontent.com/lvbihiu-ctrl/3d-asset-library/main/desktop-updates/native/latest.json'
+$script:manifestUrl = 'https://raw.githubusercontent.com/lvbihiu-ctrl/3d-asset-library/refs/heads/main/desktop-updates/native/latest.json'
 $script:version = '0.1.3'
 $script:utf8 = New-Object Text.UTF8Encoding($false)
 $script:assets = @()
@@ -418,4 +418,3 @@ try {
   [void]$form.ShowDialog()
 }catch{Show-Problem ('客户端发生错误：'+$_.Exception.Message)}
 finally{$form.Dispose()}
-
