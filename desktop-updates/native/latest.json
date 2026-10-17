@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "version": "0.1.6",
-  "notes": "自动瀑布流素材墙、虚拟分类与原始文件夹导航、右侧详情；继续保留 C4D 原生拖拽、封面、截图相似搜索及一键更新。Windows CI 已验证脚本语法及模拟素材运行，C4D 实机拖拽仍待用户验证。",
-  "scriptUrl": "https://raw.githubusercontent.com/lvbihiu-ctrl/3d-asset-library/33a89d13dd6df23792b201dbc5f2fa12b9f919e3/desktop-updates/native/app-v0.1.6.ps1",
-  "sha256": "0ae3ce995cfc3b0f996eee2561e81b705ffea6a07b7f8365bc7774b7da819683"
+  "version": "0.1.7",
+  "notes": "根治更新清单旧缓存：每次检查使用防缓存请求；Raw 未发现新版或失败时，经 GitHub Contents API 二次核验；无法确认时明确报错，不再误报最新版。保留 v0.1.6 的素材墙、分类、封面及 C4D 原生拖拽。",
+  "scriptUrl": "https://raw.githubusercontent.com/lvbihiu-ctrl/3d-asset-library/cb0b47c7672409968e4b237f41495067c0b61366/desktop-updates/native/app-v0.1.7.ps1",
+  "sha256": "5ed67e446bfb105fa86c5bbd24fe5ba3c9154b04c90c6a6212736a6b842ea348"
 }
