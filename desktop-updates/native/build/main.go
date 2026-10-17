@@ -17,7 +17,7 @@ import (
 var resources embed.FS
 
 const installDir = "D:\\Codex\\3D-Asset-Library-EXE"
-const exeName = "3D素材管理器-v0.1.1.exe"
+const exeName = "3D素材管理器-v0.1.2.exe"
 
 func msg(message string) {
  user32:=syscall.NewLazyDLL("user32.dll")
@@ -47,23 +47,19 @@ func main(){
  self,err:=os.Executable();if err!=nil{msg(err.Error());return}
  target:=filepath.Join(installDir,exeName)
  if !sameFile(self,target){
-  data,err:=resources.ReadFile("app.ps1");if err!=nil{msg(err.Error());return}
-  signature:=sha256.Sum256(data)
-  marker:=filepath.Join(installDir,".runtime","script.sha256")
-  present,_:=os.ReadFile(marker)
-  if _,err:=os.Stat(target);os.IsNotExist(err) || strings.TrimSpace(string(present))!=fmt.Sprintf("%x",signature){
+  // Each release installs to a unique filename. Never overwrite a running EXE.
+  if _,err:=os.Stat(target);os.IsNotExist(err){
    if err:=copyBinary(self,target);err!=nil{msg("无法安装客户端：\n"+err.Error());return}
-  }
+  }else if err!=nil{msg("无法检查安装目录：\n"+err.Error());return}
   if err:=runInstalled(target);err!=nil{msg("无法打开已安装客户端：\n"+err.Error())}
   return
  }
  runtimeDir:=filepath.Join(installDir,".runtime")
  if err:=os.MkdirAll(runtimeDir,0755);err!=nil{msg(err.Error());return}
  script,err:=resources.ReadFile("app.ps1");if err!=nil{msg(err.Error());return}
- scriptPath:=filepath.Join(runtimeDir,"app.ps1")
- temp:=scriptPath+".new"
- if err:=os.WriteFile(temp,append([]byte{0xEF,0xBB,0xBF},script...),0644);err!=nil{msg("无法写入运行文件：\n"+err.Error());return}
- if err:=os.Rename(temp,scriptPath);err!=nil{msg(err.Error());return}
+ scriptPath:=filepath.Join(runtimeDir,"app-v0.1.2.ps1")
+ // Versioned runtime script avoids Windows rename-over-existing restrictions.
+ if err:=os.WriteFile(scriptPath,append([]byte{0xEF,0xBB,0xBF},script...),0644);err!=nil{msg("无法写入运行文件：\n"+err.Error());return}
  sum:=sha256.Sum256(script);os.WriteFile(filepath.Join(runtimeDir,"script.sha256"),[]byte(fmt.Sprintf("%x",sum)),0644)
  overridePath:=filepath.Join(runtimeDir,"override.ps1")
  overrideHashFile:=filepath.Join(runtimeDir,"override.sha256")
