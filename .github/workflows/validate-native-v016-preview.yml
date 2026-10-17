@@ -1,0 +1,42 @@
+name: Validate native v0.1.6 preview
+
+on:
+  push:
+    branches:
+      - codex/v016-ui-migration-preview
+    paths:
+      - 'desktop-updates/native/preview/**'
+      - '.github/workflows/validate-native-v016-preview.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  parse:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse PowerShell preview and check protected functionality
+        shell: pwsh
+        run: |
+          $path = (Resolve-Path 'desktop-updates/native/preview/app-v0.1.6-preview.ps1').Path
+          $tokens = $null; $errorsFound = $null
+          $null = [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errorsFound)
+          if ($errorsFound.Count -gt 0) {
+            $errorsFound | ForEach-Object { Write-Host $_.ToString() }
+            throw 'Preview has PowerShell parse errors'
+          }
+          $text = [IO.File]::ReadAllText($path)
+          @(
+            'function Scan-Folder',
+            'function Cover-FromClipboard',
+            'function Continue-Drag',
+            'SetFileDropList',
+            'function Sort-ByImage',
+            'function Refresh-PreviewNav',
+            'function Refresh-Cards',
+            '$updates.Add_Click',
+            "0.1.6-preview"
+          ) | ForEach-Object { if (!$text.Contains($_)) { throw "Missing key feature: $_" } }
+          Write-Host 'Preview syntax and protected entry points present; does NOT verify live WinForms/C4D runtime.'
