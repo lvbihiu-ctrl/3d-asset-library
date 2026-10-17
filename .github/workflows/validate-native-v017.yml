@@ -32,7 +32,8 @@ jobs:
             'function Save-Categories','function Layout-Masonry',
             '$updates.Add_Click','override.backup.ps1'
           )|ForEach-Object{if(!$s.Contains($_)){throw "Missing required feature $_"}}
-          Write-Host ('RELEASE_SHA256='+(Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash.ToLowerInvariant())
+          Write-Host ('WINDOWS_CHECKOUT_SHA256_NOT_FOR_RELEASE='+(Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash.ToLowerInvariant())
+          Write-Host 'Important: Windows checkout may use CRLF; use the native OTA integrity workflow for the actual GitHub Raw byte hash.'
           Write-Host ('RELEASE_BYTES='+(Get-Item -LiteralPath $file).Length)
       - name: Updater stale-cache regression tests
         shell: pwsh
