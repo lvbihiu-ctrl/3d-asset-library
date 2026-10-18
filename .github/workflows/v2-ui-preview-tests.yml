@@ -1,0 +1,25 @@
+name: V2 synthetic HTML UI browser tests
+on:
+  pull_request:
+    branches: [v2-dev]
+    paths:
+      - 'v2/ui/preview/**'
+      - '.github/workflows/v2-ui-preview-tests.yml'
+  push:
+    branches: [v2-dev]
+    paths:
+      - 'v2/ui/preview/**'
+      - '.github/workflows/v2-ui-preview-tests.yml'
+permissions:
+  contents: read
+jobs:
+  chromium-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install playwright
+      - run: python -m playwright install --with-deps chromium
+      - run: python -m unittest discover -s v2/ui/preview -v
