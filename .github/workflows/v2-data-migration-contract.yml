@@ -1,0 +1,28 @@
+name: V2 migration contract
+on:
+  pull_request:
+    branches: [v2-dev]
+    paths:
+      - 'v2/data/migration/**'
+      - '.github/workflows/v2-data-migration-contract.yml'
+  push:
+    branches: [v2-dev]
+    paths:
+      - 'v2/data/migration/**'
+      - '.github/workflows/v2-data-migration-contract.yml'
+permissions:
+  contents: read
+jobs:
+  tests:
+    name: synthetic migration (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s v2/data/migration -v
