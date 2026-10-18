@@ -19,15 +19,29 @@ internal sealed class MainWindow : Form
     private readonly HostMessageDispatcher _dispatcher;
     private readonly LibraryScanner _libraryScanner = new();
     private readonly LibrarySession _librarySession = new();
+    private readonly LocalLibraryStore _store;
+    private readonly ImageSimilarity _imageSearch = new();
+    private readonly SemaphoreSlim _libraryWork = new(1, 1);
     private string? _lastAutomatedLocatedAssetId;
 
     public MainWindow(HostOptions options)
     {
         _options = options;
+        var dataDirectory = options.DataDirectory ?? (options.IsAutomated
+            ? Path.Combine(options.UserDataDirectory ?? throw new ArgumentException("自动测试必须指定 --user-data-dir 或 --data-dir。"), "test-library")
+            : @"D:\Codex\3D-Asset-Library-V2-Data");
+        _store = new LocalLibraryStore(dataDirectory);
+        var catalog = _store.Load();
+        if (catalog is null && (options.LegacyDataDirectory is not null || !options.IsAutomated))
+            catalog = _store.ImportLegacy(options.LegacyDataDirectory ?? @"D:\Codex\3D-Asset-Library-Ready\.local-data");
+        if (catalog is not null) _librarySession.Replace(catalog);
         _dispatcher = new HostMessageDispatcher(
             CreateHostInfo,
             ImportLibraryAsync,
-            LocateAsset);
+            LocateAsset,
+            () => _librarySession.Catalog,
+            SetCoverFromClipboardAsync,
+            SearchSimilarClipboardAsync);
         Text = "3D 素材管理器 V2";
         ClientSize = new Size(1016, 689);
         MinimumSize = new Size(820, 600);
@@ -44,6 +58,14 @@ internal sealed class MainWindow : Form
         try
         {
             await InitializeWebViewAsync();
+            if (_options.CoverFeatureTest)
+            {
+                await ClipboardFeatureSmoke.VerifyAsync(_webView, _librarySession, _store, _options.LibraryTestRoot!);
+                if (_options.CaptureDirectory is not null)
+                    await ScreenshotCapture.CaptureRequiredAsync(_webView, this, _options.CaptureDirectory);
+                Close();
+                return;
+            }
             if (_options.LibraryTestRoot is not null)
             {
                 await WebViewInteractionSmoke.VerifyRealLibraryAsync(
@@ -114,12 +136,7 @@ internal sealed class MainWindow : Form
             }
         }
 
-        var userDataDirectory = _options.UserDataDirectory
-            ?? Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "3DAssetLibrary",
-                "V2Preview",
-                "WebView2");
+        var userDataDirectory = _options.UserDataDirectory ?? @"D:\Codex\3D-Asset-Library-V2-Data\WebView2";
         Directory.CreateDirectory(userDataDirectory);
 
         var environment = await CoreWebView2Environment.CreateAsync(userDataFolder: userDataDirectory);
@@ -219,12 +236,20 @@ internal sealed class MainWindow : Form
 
     private async Task<ImportLibraryResult> ImportLibraryAsync()
     {
+        await _libraryWork.WaitAsync();
+        try { return await ImportLibraryCoreAsync(); }
+        finally { _libraryWork.Release(); }
+    }
+
+    private async Task<ImportLibraryResult> ImportLibraryCoreAsync()
+    {
         var progress = new Progress<LibraryScanProgress>(ReportScanProgress);
         if (_options.LibraryTestRoot is not null)
         {
             var automatedCatalog = await Task.Run(() => _libraryScanner.Scan(
                 _options.LibraryTestRoot,
                 progress: progress));
+            automatedCatalog = _store.SaveCatalog(automatedCatalog);
             _librarySession.Replace(automatedCatalog);
             return new ImportLibraryResult(false, automatedCatalog);
         }
@@ -243,8 +268,58 @@ internal sealed class MainWindow : Form
 
         var selectedPath = Path.GetFullPath(dialog.SelectedPath);
         var catalog = await Task.Run(() => _libraryScanner.Scan(selectedPath, progress: progress));
+        catalog = _store.SaveCatalog(catalog);
         _librarySession.Replace(catalog);
         return new ImportLibraryResult(false, catalog);
+    }
+
+    private async Task<LibraryAsset> SetCoverFromClipboardAsync(string assetId)
+    {
+        await _libraryWork.WaitAsync();
+        try
+        {
+            if (!_librarySession.TryGetAsset(assetId, out var asset) || asset is null)
+                throw new InvalidOperationException("请先选择一条真实素材。");
+            using var image = await GetClipboardImageAsync();
+            var updated = _store.SaveCover(asset, image);
+            var catalog = _librarySession.Catalog!;
+            _librarySession.Replace(catalog with { Assets = catalog.Assets.Select(item => item.Id == assetId ? updated : item).ToArray() });
+            // The atomic cover map is authoritative, even if a later catalog save cannot complete.
+            return updated;
+        }
+        finally { _libraryWork.Release(); }
+    }
+
+    private async Task<ImageSearchResult> SearchSimilarClipboardAsync()
+    {
+        await _libraryWork.WaitAsync();
+        try
+        {
+            if (_librarySession.Catalog is null) throw new InvalidOperationException("请先导入真实素材文件夹。");
+            using var image = await GetClipboardImageAsync();
+            var assets = _librarySession.Catalog.Assets;
+            return await Task.Run(() => _imageSearch.Search(image, assets));
+        }
+        finally { _libraryWork.Release(); }
+    }
+
+    private static async Task<Image> GetClipboardImageAsync()
+    {
+        var occupied = false;
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            try
+            {
+                if (Clipboard.ContainsImage() && Clipboard.GetImage() is { } image) return image;
+                occupied = false;
+            }
+            catch (ExternalException) { occupied = true; }
+            // Clipboard owners and history tools can briefly hold the clipboard after a copy.
+            // Yield on the UI context (STA); never move Clipboard APIs to Task.Run.
+            if (attempt < 3) await Task.Delay(75);
+        }
+        throw new InvalidOperationException(occupied ? "剪贴板正被其他程序占用，请稍后重试。"
+            : "剪贴板中没有图片。请先复制图片或截图，再执行此操作。");
     }
 
     private void ReportScanProgress(LibraryScanProgress progress)
@@ -347,7 +422,7 @@ internal sealed class MainWindow : Form
                 // The host handshake alone does not prove the V2 UI rendered.
                 // Require actual masonry cards, search and sidebar before smoke-test success.
                 var screenReady = await _webView.CoreWebView2.ExecuteScriptAsync(
-                    "Boolean(document.querySelector('#app[data-ui-contract=\"issue-32\"]') && document.querySelector('#search') && document.querySelector('#special-nav') && document.querySelector('#inspector') && document.querySelectorAll('#assets article.asset').length >= 15)");
+                    "Boolean(document.querySelector('#app[data-ui-contract=\"issue-32\"]') && document.querySelector('#search') && document.querySelector('#special-nav') && document.querySelector('#inspector') && document.documentElement.dataset.libraryReady === 'true')");
                 if (screenReady == "true")
                 {
                     return;

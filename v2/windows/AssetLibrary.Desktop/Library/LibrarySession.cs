@@ -4,6 +4,7 @@ public sealed class LibrarySession
 {
     private readonly object _gate = new();
     private Dictionary<string, LibraryAsset> _assets = new(StringComparer.Ordinal);
+    public LibraryCatalog? Catalog { get; private set; }
 
     public int Count
     {
@@ -21,6 +22,7 @@ public sealed class LibrarySession
         ArgumentNullException.ThrowIfNull(catalog);
         lock (_gate)
         {
+            Catalog = catalog;
             _assets = catalog.Assets.ToDictionary(asset => asset.Id, StringComparer.Ordinal);
         }
     }

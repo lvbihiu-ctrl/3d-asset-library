@@ -30,6 +30,8 @@ public sealed class TrustedContentPolicyTests
     [InlineData("https://assetlibrary-covers.local:444/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", false)]
     [InlineData("https://user@assetlibrary-covers.local/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", false)]
     [InlineData("https://assetlibrary-covers.local/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa?path=D:/private", false)]
+    [InlineData("https://assetlibrary-covers.local/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa?revision=0123456789abcdef0123456789abcdef", true)]
+    [InlineData("https://assetlibrary-covers.local/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa?revision=nothex", false)]
     [InlineData("http://assetlibrary-covers.local/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", false)]
     public void OnlyMappedLocalResourcesMayLoad(string resourceUrl, bool expected)
     {

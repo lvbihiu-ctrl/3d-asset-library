@@ -50,7 +50,7 @@ jobs:
           if (!(Test-Path $env:CHROMIUM_BIN)) {
             throw "Microsoft Edge was not found at $env:CHROMIUM_BIN"
           }
-          python -m unittest v2.ui.desktop.test_desktop v2.ui.preview.test_preview -v `
+          python -m unittest v2.ui.desktop.test_desktop v2.ui.desktop.test_clipboard v2.ui.preview.test_preview -v `
             2>&1 | Tee-Object "$env:RUNNER_TEMP\TestResults\ui-tests.txt"
           if ($LASTEXITCODE -ne 0) {
             throw "UI interaction tests failed with exit code $LASTEXITCODE."

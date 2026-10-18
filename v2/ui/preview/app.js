@@ -57,6 +57,8 @@ let realMode = false;
 let librarySummary = null;
 let hostInfo = null;
 let scanning = false;
+let clipboardBusy = false;
+let imageResults = null;
 
 function toast(message, type = 'info') {
   $('toast').textContent = message;
@@ -77,7 +79,7 @@ function matchesFilters(asset) {
   const chipMatches = state.chip === '全部' || asset.category === state.chip || asset.tag === state.chip;
   const searchMatches = !query || [asset.name, asset.category, asset.folder, asset.tag, asset.source, asset.extension]
     .some(value => String(value).toLocaleLowerCase().includes(query));
-  return filterMatches && chipMatches && searchMatches;
+  return filterMatches && chipMatches && searchMatches && (!imageResults || imageResults.has(asset.id));
 }
 
 function navButton(key, iconName, label, number) {
@@ -126,6 +128,7 @@ function renderChips() {
 }
 
 function resetFilters() {
+  imageResults = null;
   state.filter = 'all';
   state.query = '';
   state.chip = '全部';
@@ -135,19 +138,22 @@ function resetFilters() {
 
 function renderCards() {
   const visible = items.filter(matchesFilters);
+  if (imageResults) visible.sort((a, b) => imageResults.get(a.id) - imageResults.get(b.id));
   const focusId = visible.some(asset => asset.id === state.selected) ? state.selected : visible[0]?.id;
   const filterTitle = state.filter === 'all' ? '全部素材'
     : state.filter === 'favorite' ? '我的收藏'
       : state.filter === 'recent' ? '最近扫描'
         : state.filter === 'unclassified' ? '未分类'
           : state.filter.slice(state.filter.indexOf(':') + 1);
-  $('pageName').textContent = filterTitle;
+  $('pageName').textContent = imageResults ? '以图搜图 · 基础相似度' : filterTitle;
   $('pageCount').textContent = realMode
     ? `${visible.length} / ${items.length} 个真实模型 · ${librarySummary?.rootName || '本地素材库'}`
     : `${visible.length} 条合成测试记录 · 未读取本机模型`;
   if (realMode) {
     const errors = Number(librarySummary?.errorCount || 0);
-    $('hintline').innerHTML = `${icon('info')}<span><b>真实素材只读索引：</b>${xss(librarySummary?.root || '')} · ${items.length} 个模型 · ${errors ? `${errors} 个目录无法读取` : '扫描完成'}。C4D 拖入尚未完成。</span>`;
+    $('hintline').innerHTML = imageResults
+      ? `${icon('info')}<span><b>dHash 基础相似度排序：</b>差异越小越靠前，不代表语义识别。点击“全部素材”退出搜图。</span>`
+      : `${icon('info')}<span><b>真实素材只读索引：</b>${xss(librarySummary?.root || '')} · ${items.length} 个模型 · ${librarySummary?.rootAvailable === false ? '磁盘未连接：保留索引和缓存封面，请重新连接后定位' : errors ? `${errors} 个目录无法读取` : '索引已载入'}。选中素材后 Ctrl+V 设置封面；以图搜图请用专门按钮。C4D 拖入尚未完成。</span>`;
   } else {
     $('hintline').innerHTML = `${icon('info')}<span>当前仅用于验证界面与交互；<b>未连接真实素材库，C4D 拖入尚未完成。</b></span>`;
   }
@@ -158,7 +164,7 @@ function renderCards() {
   $('assets').innerHTML = visible.length ? visible.map(asset => {
     const syntheticControls = realMode ? '' : `<input class="multi" type="checkbox" data-check="${xss(asset.id)}" ${state.checked.has(asset.id) ? 'checked' : ''} aria-label="批量选择 ${xss(asset.name)}">`;
     const favorite = realMode ? '' : `<button type="button" class="heart ${asset.fav ? 'on' : ''}" data-fav="${xss(asset.id)}" aria-label="${asset.fav ? '取消收藏' : '收藏'} ${xss(asset.name)}" aria-pressed="${asset.fav}">${icon('heart')}</button>`;
-    return `<article role="listitem" aria-current="${asset.id === state.selected}" class="asset ${asset.id === state.selected ? 'selected' : ''}" data-id="${xss(asset.id)}" tabindex="${asset.id === focusId ? '0' : '-1'}" style="--ar:${asset.ratio}"><div class="cover"><img src="${xss(asset.src)}" alt="${xss(asset.name)}" loading="lazy"><span class="mark">${realMode ? (asset.hasCover ? '同名真实封面' : '无同名封面') : '合成封面 · 未关联模型'}</span>${syntheticControls}</div><div class="assetinfo"><div class="aname" title="${xss(asset.name)}">${xss(asset.name)}</div><div class="origin">${realMode ? `${xss(asset.extension)} · ${xss(asset.folder)}` : '合成数据 · SVG'}</div><div class="tags"><span class="tag">${xss(asset.category)}</span><span class="tag">${xss(asset.tag)}</span></div><div class="assetfoot"><span class="model-state">${icon('box')}${realMode ? '原模型只读' : '无实际模型'}</span>${favorite}</div></div></article>`;
+    return `<article role="listitem" aria-current="${asset.id === state.selected}" class="asset ${asset.id === state.selected ? 'selected' : ''}" data-id="${xss(asset.id)}" tabindex="${asset.id === focusId ? '0' : '-1'}" style="--ar:${asset.ratio}"><div class="cover"><img src="${xss(asset.src)}" alt="${xss(asset.name)}" loading="lazy"><span class="mark">${imageResults ? '差异 ' + imageResults.get(asset.id) + '/64' : realMode ? (asset.hasCover ? '真实封面' : '暂无封面') : '合成封面 · 未关联模型'}</span>${syntheticControls}</div><div class="assetinfo"><div class="aname" title="${xss(asset.name)}">${xss(asset.name)}</div><div class="origin">${realMode ? `${xss(asset.extension)} · ${xss(asset.folder)}` : '合成数据 · SVG'}</div><div class="tags"><span class="tag">${xss(asset.category)}</span><span class="tag">${xss(asset.tag)}</span></div><div class="assetfoot"><span class="model-state">${icon('box')}${realMode ? '原模型只读' : '无实际模型'}</span>${favorite}</div></div></article>`;
   }).join('') : emptyMessage;
 
   const cardElements = [...$('assets').querySelectorAll('article.asset')];
@@ -237,7 +243,7 @@ function renderDetail() {
   }
   if (realMode) {
     const modified = asset.modifiedUtc ? new Date(asset.modifiedUtc).toLocaleString() : '未知';
-    $('detail').innerHTML = `<div class="inspectCover"><img src="${xss(asset.src)}" alt="${xss(asset.name)}"></div><div class="detailName">${xss(asset.name)}</div><div class="small">${asset.hasCover ? '同目录同名真实封面' : '没有找到同目录同名封面'}</div><div class="rule"></div><div class="fieldLabel">原文件（只读）</div><div class="small">${xss(asset.relativePath)}</div><div class="rule"></div><div class="small">格式：<b>${xss(asset.extension)}</b><br>大小：${xss(formatBytes(asset.sizeBytes))}<br>修改时间：${xss(modified)}</div><div class="rule"></div><button type="button" class="toolbtn primary" id="detailLocate">${icon('locate')}在资源管理器中定位</button><div class="unavailable-callout">${icon('info')}<span><b>C4D 拖入尚未接入</b><br>Issue #15 仍待实机验证。</span></div><div class="inspectNote">定位操作只向 C# 发送素材 ID，网页不能提交任意文件路径。</div>`;
+    $('detail').innerHTML = `<div class="inspectCover"><img src="${xss(asset.src)}" alt="${xss(asset.name)}"></div><div class="detailName">${xss(asset.name)}</div><div class="small">${asset.hasCover ? '已关联真实封面 · Ctrl+V 可更换' : '选中后 Ctrl+V 粘贴图片设置封面'}</div><div class="rule"></div><div class="fieldLabel">原文件（只读）</div><div class="small">${xss(asset.relativePath)}</div><div class="rule"></div><div class="small">格式：<b>${xss(asset.extension)}</b><br>大小：${xss(formatBytes(asset.sizeBytes))}<br>修改时间：${xss(modified)}</div><div class="rule"></div><button type="button" class="toolbtn primary" id="detailLocate">${icon('locate')}在资源管理器中定位</button><div class="unavailable-callout">${icon('info')}<span><b>C4D 拖入尚未接入</b><br>Issue #15 仍待实机验证。</span></div><div class="inspectNote">封面和索引保存于独立缓存，不修改原素材。</div>`;
     $('detailLocate').onclick = locateSelected;
     return;
   }
@@ -287,6 +293,9 @@ function updateCapabilityControls() {
     if (id === 'checkUpdate') enabled = enabled && capabilities.has('installUpdate');
     if (id === 'locateFile') enabled = enabled && realMode && Boolean(state.selected);
     if (id === 'importFolder') enabled = enabled && !scanning;
+    if (id === 'pasteCover') enabled = enabled && realMode && Boolean(state.selected);
+    if (id === 'findImage') enabled = enabled && realMode && items.length > 0;
+    if (['pasteCover', 'findImage', 'importFolder'].includes(id)) enabled = enabled && !clipboardBusy && !scanning;
     control.disabled = !enabled;
     control.title = enabled ? '' : id === 'checkUpdate' ? '更新服务尚未接入' : id === 'locateFile' ? '请先选择真实素材' : '该本地能力尚未接入';
   }
@@ -309,9 +318,19 @@ async function connectNativeHost() {
   }
   setNativeStatus('connecting', '正在连接 Windows 客户端…');
   try {
-    applyCapabilities(await nativeHost.request('getHostInfo', {}));
+    const info = await nativeHost.request('getHostInfo', {});
+    applyCapabilities(info);
+    if (info.capabilities?.includes('getLibrary')) {
+      const saved = await host('getLibrary');
+      if (saved?.catalog) {
+        applyRealCatalog(saved.catalog);
+        setNativeStatus('connected', `真实素材库已恢复 · ${items.length} 条记录`);
+      }
+    }
   } catch (error) {
     setNativeStatus('error', `Windows 客户端连接失败：${error.message}`);
+  } finally {
+    document.documentElement.dataset.libraryReady = 'true';
   }
 }
 
@@ -354,6 +373,7 @@ async function nativeOperation(action, payload = {}) {
 }
 
 function applyRealCatalog(catalog) {
+  imageResults = null;
   realMode = true;
   librarySummary = catalog;
   cats = [...new Set(catalog.assets.map(asset => asset.extension))].sort();
@@ -423,8 +443,61 @@ window.addEventListener('assetlibrary:scanProgress', event => {
   $('hintline').innerHTML = `${icon('info')}<span><b>扫描进行中：</b>${assets} 个模型 · ${directories} 个文件夹 · ${errors} 个读取错误<br><span class="small">${xss(folder)}</span></span>`;
 });
 
-$('pasteCover').onclick = () => nativeOperation('setCoverFromClipboard', { assetId: state.selected });
-$('findImage').onclick = () => nativeOperation('searchSimilarClipboard');
+$('pasteCover').onclick = pasteCover;
+$('findImage').onclick = searchImage;
+async function pasteCover() {
+  if (clipboardBusy || scanning || !realMode || !state.selected) return;
+  const selectedId = state.selected;
+  clipboardBusy = true;
+  document.documentElement.dataset.coverState = 'busy';
+  updateCapabilityControls();
+  try {
+    const result = await host('setCoverFromClipboard', { assetId: selectedId });
+    const asset = items.find(item => item.id === result.asset.id);
+    if (!asset) throw Error('素材选择已变化，请重新选择。');
+    Object.assign(asset, result.asset, { tag: '有封面', src: `https://assetlibrary-covers.local/${asset.id}?revision=${result.revision}` });
+    imageResults = null;
+    render();
+    document.documentElement.dataset.coverState = 'saved';
+    toast('封面已保存，重启后仍会保留；原模型未修改');
+  } catch (error) {
+    document.documentElement.dataset.coverState = 'error';
+    toast(error.message, 'error');
+  } finally {
+    clipboardBusy = false;
+    updateCapabilityControls();
+  }
+}
+async function searchImage() {
+  if (clipboardBusy || scanning || !realMode) return;
+  clipboardBusy = true;
+  document.documentElement.dataset.imageSearchState = 'busy';
+  updateCapabilityControls();
+  toast('正在比较素材封面…');
+  try {
+    const result = await host('searchSimilarClipboard');
+    imageResults = new Map(result.matches.map(match => [match.assetId, match.distance]));
+    state.query = ''; state.filter = 'all'; state.chip = '全部';
+    $('search').value = '';
+    state.selected = result.matches[0]?.assetId ?? null;
+    render();
+    document.documentElement.dataset.imageSearchState = 'complete';
+    toast(result.matches.length ? `已按基础相似度排序 ${result.matches.length} 条；${result.skipped} 条无可读封面` : '没有可比较的封面，请先给素材设置封面', result.matches.length ? 'info' : 'error');
+  } catch (error) {
+    document.documentElement.dataset.imageSearchState = 'error';
+    toast(error.message, 'error');
+  } finally {
+    clipboardBusy = false;
+    updateCapabilityControls();
+  }
+}
+document.addEventListener('keydown', event => {
+  if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'v' || event.altKey || event.shiftKey) return;
+  if (event.target.closest?.('input,textarea,[contenteditable="true"],[contenteditable=""]')) return;
+  if ($('pasteCover').disabled) return;
+  event.preventDefault();
+  pasteCover();
+});
 $('showAll').onclick = resetFilters;
 $('locateFile').onclick = locateSelected;
 $('importFolder').onclick = importFolder;

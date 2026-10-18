@@ -40,7 +40,8 @@ public static class TrustedContentPolicy
             && uri.Host.Equals(CoverHostName, StringComparison.OrdinalIgnoreCase)
             && uri.Port == 443
             && uri.UserInfo.Length == 0
-            && uri.Query.Length == 0
+            && (uri.Query.Length == 0 || (uri.Query.StartsWith("?revision=", StringComparison.Ordinal)
+                && uri.Query.Length == 42 && uri.Query[10..].All(char.IsAsciiHexDigit)))
             && uri.AbsolutePath.Length == 65
             && uri.AbsolutePath[1..].All(char.IsAsciiHexDigit);
     }

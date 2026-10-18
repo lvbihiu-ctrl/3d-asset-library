@@ -130,7 +130,7 @@ public sealed class LibraryScanner
         return null;
     }
 
-    private static string CreateAssetId(string fullPath)
+    public static string CreateAssetId(string fullPath)
     {
         var normalized = Path.GetFullPath(fullPath).TrimEnd(Path.DirectorySeparatorChar).ToUpperInvariant();
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalized))).ToLowerInvariant();

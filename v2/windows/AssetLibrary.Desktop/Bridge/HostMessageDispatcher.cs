@@ -16,15 +16,24 @@ public sealed class HostMessageDispatcher
     private readonly Func<HostInfo> _hostInfo;
     private readonly Func<Task<ImportLibraryResult>>? _importLibrary;
     private readonly Func<string, bool>? _locateAsset;
+    private readonly Func<LibraryCatalog?>? _getLibrary;
+    private readonly Func<string, Task<LibraryAsset>>? _setCoverFromClipboard;
+    private readonly Func<Task<ImageSearchResult>>? _searchSimilarClipboard;
 
     public HostMessageDispatcher(
         Func<HostInfo> hostInfo,
         Func<Task<ImportLibraryResult>>? importLibrary = null,
-        Func<string, bool>? locateAsset = null)
+        Func<string, bool>? locateAsset = null,
+        Func<LibraryCatalog?>? getLibrary = null,
+        Func<string, Task<LibraryAsset>>? setCoverFromClipboard = null,
+        Func<Task<ImageSearchResult>>? searchSimilarClipboard = null)
     {
         _hostInfo = hostInfo ?? throw new ArgumentNullException(nameof(hostInfo));
         _importLibrary = importLibrary;
         _locateAsset = locateAsset;
+        _getLibrary = getLibrary;
+        _setCoverFromClipboard = setCoverFromClipboard;
+        _searchSimilarClipboard = searchSimilarClipboard;
     }
 
     public string Dispatch(string? rawMessage) =>
@@ -70,6 +79,9 @@ public sealed class HostMessageDispatcher
                 "getHostInfo" => DispatchHostInfo(id!, payload),
                 "importFolder" => await DispatchImportAsync(id!, payload),
                 "locateAsset" => DispatchLocate(id!, payload),
+                "getLibrary" => DispatchGetLibrary(id!, payload),
+                "setCoverFromClipboard" => await DispatchClipboardAsync(id!, payload, true),
+                "searchSimilarClipboard" => await DispatchClipboardAsync(id!, payload, false),
                 _ => Error(id, "action_not_allowed", "该页面动作未被 Windows 宿主允许。"),
             };
         }
@@ -99,6 +111,9 @@ public sealed class HostMessageDispatcher
             {
                 capabilities.Add("locateAsset");
             }
+            if (_getLibrary is not null) capabilities.Add("getLibrary");
+            if (_setCoverFromClipboard is not null) capabilities.Add("setCoverFromClipboard");
+            if (_searchSimilarClipboard is not null) capabilities.Add("searchSimilarClipboard");
 
             return Success(id, new
             {
@@ -169,6 +184,38 @@ public sealed class HostMessageDispatcher
         {
             Trace.TraceError($"Native locate failed: {exception}");
             return Error(id, "locate_failed", "Windows 资源管理器无法定位该素材。");
+        }
+    }
+
+    private string DispatchGetLibrary(string id, JsonElement payload)
+    {
+        if (_getLibrary is null) return Error(id, "action_not_allowed", "本地索引尚未启用。");
+        if (payload.EnumerateObject().Any()) return Error(id, "invalid_payload", "本地索引不接受网页路径。");
+        return Success(id, new { catalog = _getLibrary() });
+    }
+
+    private async Task<string> DispatchClipboardAsync(string id, JsonElement payload, bool setCover)
+    {
+        if ((setCover && _setCoverFromClipboard is null) || (!setCover && _searchSimilarClipboard is null))
+            return Error(id, "action_not_allowed", "剪贴板功能尚未接入。");
+        var properties = payload.EnumerateObject().ToArray();
+        var assetId = ReadString(payload, "assetId");
+        if (setCover ? properties.Length != 1 || properties[0].Name != "assetId" || !IsValidAssetId(assetId) : properties.Length != 0)
+            return Error(id, "invalid_payload", "封面操作只接受有效素材 ID；以图搜图不接受额外字段。");
+        try
+        {
+            if (setCover)
+                return Success(id, new { asset = await _setCoverFromClipboard!(assetId!), revision = Guid.NewGuid().ToString("N") });
+            return Success(id, await _searchSimilarClipboard!());
+        }
+        catch (InvalidOperationException exception)
+        {
+            return Error(id, "clipboard_unavailable", exception.Message);
+        }
+        catch (Exception exception)
+        {
+            Trace.TraceError($"Clipboard feature failed: {exception}");
+            return Error(id, "clipboard_failed", "操作未完成，请检查剪贴板是否包含图片、封面是否可读取，以及 D 盘剩余空间。");
         }
     }
 

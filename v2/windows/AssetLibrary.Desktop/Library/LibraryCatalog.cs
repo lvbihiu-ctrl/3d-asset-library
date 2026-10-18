@@ -6,7 +6,10 @@ public sealed record LibraryCatalog(
     DateTimeOffset ScannedAtUtc,
     long DurationMilliseconds,
     int ErrorCount,
-    IReadOnlyList<LibraryAsset> Assets);
+    IReadOnlyList<LibraryAsset> Assets)
+{
+    public bool RootAvailable => Directory.Exists(Root);
+}
 
 public sealed record ImportLibraryResult(bool Cancelled, LibraryCatalog? Catalog);
 
