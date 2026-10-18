@@ -7,6 +7,49 @@ internal static class WebViewInteractionSmoke
 {
     private static readonly TimeSpan LibraryTimeout = TimeSpan.FromSeconds(30);
 
+    public static async Task VerifyLargeLibraryAsync(WebView2 webView, Library.LibraryCatalog catalog)
+    {
+        if (catalog is null || catalog.Assets.Count <= 80) throw new InvalidDataException("Large-library smoke needs an existing catalog over 80 records.");
+        var uniqueNames = catalog.Assets.GroupBy(asset => asset.Name, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() == 1).Select(group => group.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var target = catalog.Assets.Skip(80).Last(asset => uniqueNames.Contains(asset.Name));
+        var expectedPreviews = catalog.Assets.Count(asset => asset.HasCover || asset.HasReferencePreview);
+        var script = """
+            (() => {
+              document.querySelector('#showAll').click();
+              const cards = () => [...document.querySelectorAll('article.asset')];
+              const firstPage = cards().length;
+              const firstId = cards()[0].dataset.id;
+              document.querySelector('#pageNext').click();
+              const nextPage = cards().length;
+              const nextId = cards()[0].dataset.id;
+              const search = document.querySelector('#search');
+              search.value = QUERY; search.dispatchEvent(new Event('input',{bubbles:true}));
+              const foundGlobal = cards().some(card=>card.dataset.id === TARGET);
+              document.querySelector('#showAll').click();
+              document.querySelector('[data-preview="available"]').click();
+              const available = Number(document.querySelector('#assets').dataset.totalResults);
+              document.querySelector('[data-preview="missing"]').click();
+              const missing = Number(document.querySelector('#assets').dataset.totalResults);
+              const missingPageSize = cards().length;
+              document.querySelector('#showAll').click();
+              const compactPaths = cards().every(card=>getComputedStyle(card.querySelector('.origin')).whiteSpace==='nowrap');
+              return {firstPage,nextPage,different:firstId!==nextId,foundGlobal,available,missing,missingPageSize,compactPaths};
+            })()
+            """;
+        script = script.Replace("QUERY", JsonSerializer.Serialize(target.Name), StringComparison.Ordinal)
+            .Replace("TARGET", JsonSerializer.Serialize(target.Id), StringComparison.Ordinal);
+        using var result = JsonDocument.Parse(await webView.CoreWebView2.ExecuteScriptAsync(script));
+        var value = result.RootElement;
+        if (value.GetProperty("firstPage").GetInt32() != 80 || value.GetProperty("nextPage").GetInt32() > 80
+            || !value.GetProperty("different").GetBoolean() || !value.GetProperty("foundGlobal").GetBoolean()
+            || value.GetProperty("available").GetInt32() != expectedPreviews
+            || value.GetProperty("missing").GetInt32() != catalog.Assets.Count - expectedPreviews
+            || value.GetProperty("missingPageSize").GetInt32() > 80 || !value.GetProperty("compactPaths").GetBoolean())
+            throw new InvalidDataException("Large-library UI verification failed: " + result.RootElement.GetRawText());
+        Console.WriteLine($"LARGE LIBRARY PASS: {catalog.Assets.Count} records, 80 cards/page, global search and preview filters; model covers={catalog.Assets.Count(asset=>asset.HasCover)}, project references={catalog.Assets.Count(asset=>!asset.HasCover && asset.HasReferencePreview)}, without previews={catalog.Assets.Count-expectedPreviews}.");
+    }
+
     public static async Task VerifyAsync(WebView2 webView)
     {
         const string script = """
@@ -78,16 +121,18 @@ internal static class WebViewInteractionSmoke
     public static async Task VerifyCardZoomAsync(WebView2 webView)
     {
         const string readWidth = "document.querySelector('article.asset').getBoundingClientRect().width";
-        await Task.Delay(100);
+        var desired = JsonSerializer.Deserialize<double>(await webView.CoreWebView2.ExecuteScriptAsync("parseFloat(document.querySelector('#app').style.getPropertyValue('--card-size'))"));
+        await WaitForCardWidthAsync(webView, desired);
         var before = JsonSerializer.Deserialize<double>(await webView.CoreWebView2.ExecuteScriptAsync(readWidth));
         var sidebarBefore = await webView.CoreWebView2.ExecuteScriptAsync("document.querySelector('.nav').getBoundingClientRect().width");
-        await webView.CoreWebView2.ExecuteScriptAsync("document.querySelector('.main').dispatchEvent(new WheelEvent('wheel',{ctrlKey:true,deltaY:-120,bubbles:true,cancelable:true})); true");
+        var direction = desired >= 456 ? 120 : -120;
+        await webView.CoreWebView2.ExecuteScriptAsync($"document.querySelector('.main').dispatchEvent(new WheelEvent('wheel',{{ctrlKey:true,deltaY:{direction},bubbles:true,cancelable:true}})); true");
         // Background/occluded WebView2 windows can throttle requestAnimationFrame.
         // Wait for the real layout change rather than assuming a 100 ms paint deadline.
-        await WaitForCardWidthAsync(webView, before + 24);
+        await WaitForCardWidthAsync(webView, before + (direction < 0 ? 24 : -24));
         var enlarged = JsonSerializer.Deserialize<double>(await webView.CoreWebView2.ExecuteScriptAsync(readWidth));
         var sidebarAfter = await webView.CoreWebView2.ExecuteScriptAsync("document.querySelector('.nav').getBoundingClientRect().width");
-        if (enlarged <= before || sidebarBefore != sidebarAfter || webView.ZoomFactor != 1 || webView.CoreWebView2.Settings.IsZoomControlEnabled)
+        if (enlarged == before || sidebarBefore != sidebarAfter || webView.ZoomFactor != 1 || webView.CoreWebView2.Settings.IsZoomControlEnabled)
             throw new InvalidDataException($"Card zoom verification failed: before={before}, enlarged={enlarged}, sidebar={sidebarBefore}/{sidebarAfter}, zoom={webView.ZoomFactor}, pageZoomEnabled={webView.CoreWebView2.Settings.IsZoomControlEnabled}.");
 
         var reloaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -107,7 +152,7 @@ internal static class WebViewInteractionSmoke
             await WaitForCardWidthAsync(webView, enlarged);
             var restored = JsonSerializer.Deserialize<double>(await webView.CoreWebView2.ExecuteScriptAsync(readWidth));
             if (restored != enlarged) throw new InvalidDataException("Card size did not survive page reload.");
-            await webView.CoreWebView2.ExecuteScriptAsync("document.querySelector('.main').dispatchEvent(new WheelEvent('wheel',{ctrlKey:true,deltaY:120,bubbles:true,cancelable:true})); true");
+            await webView.CoreWebView2.ExecuteScriptAsync($"document.querySelector('.main').dispatchEvent(new WheelEvent('wheel',{{ctrlKey:true,deltaY:{-direction},bubbles:true,cancelable:true}})); true");
             await WaitForCardWidthAsync(webView, before);
             var reduced = JsonSerializer.Deserialize<double>(await webView.CoreWebView2.ExecuteScriptAsync(readWidth));
             if (reduced != before) throw new InvalidDataException("Ctrl+wheel down did not restore the smaller card size.");

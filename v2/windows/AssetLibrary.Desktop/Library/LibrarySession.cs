@@ -38,12 +38,12 @@ public sealed class LibrarySession
     public bool TryGetCover(string assetId, out string? coverPath)
     {
         coverPath = null;
-        if (!TryGetAsset(assetId, out var asset) || asset?.CoverPath is null)
+        if (!TryGetAsset(assetId, out var asset) || asset is null)
         {
             return false;
         }
 
-        coverPath = asset.CoverPath;
-        return File.Exists(coverPath);
+        coverPath = asset.CoverPath is not null && File.Exists(asset.CoverPath) ? asset.CoverPath : asset.ReferencePreviewPath;
+        return coverPath is not null && File.Exists(coverPath);
     }
 }

@@ -81,6 +81,14 @@ internal sealed class MainWindow : Form
         try
         {
             await InitializeWebViewAsync();
+            if (_options.LargeLibraryTest)
+            {
+                await WebViewInteractionSmoke.VerifyLargeLibraryAsync(_webView, _librarySession.Catalog!);
+                if (_options.CaptureDirectory is not null)
+                    await ScreenshotCapture.CaptureRequiredAsync(_webView, this, _options.CaptureDirectory);
+                Close();
+                return;
+            }
             if (_options.MultiFolderTest)
             {
                 _automatedFolderSelections = MultiFolderFeatureSmoke.Prepare(_options.LibraryTestRoot!);

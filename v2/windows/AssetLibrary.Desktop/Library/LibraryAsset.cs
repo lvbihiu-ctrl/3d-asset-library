@@ -16,4 +16,6 @@ public sealed record LibraryAsset(
     [property: JsonIgnore] string? CoverPath,
     string SourceRootId = "",
     string SourceRootName = "",
-    IReadOnlyList<string>? SourceRootIds = null);
+    IReadOnlyList<string>? SourceRootIds = null,
+    bool HasReferencePreview = false,
+    [property: JsonIgnore] string? ReferencePreviewPath = null);

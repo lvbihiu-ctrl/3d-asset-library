@@ -161,16 +161,21 @@ public sealed class LocalLibraryStore
         return SaveCatalog(new LibraryCatalog(root, new DirectoryInfo(root).Name, DateTimeOffset.UtcNow, 0, 0, assets));
     }
 
-    private LibraryCatalog WithCustomCovers(LibraryCatalog catalog) => catalog with
+    private LibraryCatalog WithCustomCovers(LibraryCatalog catalog)
     {
-        Assets = catalog.Assets.Select(asset =>
+        var previewCache = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        return catalog with { Assets = catalog.Assets.Select(asset =>
         {
             asset = asset with { SourceRootIds = catalog.SourceRoots.Where(root => IsUnder(root.Path, asset.FullPath)).Select(root => root.Id).ToArray() };
+            var source = catalog.SourceRoots.FirstOrDefault(root => root.Id == asset.SourceRootId)
+                ?? catalog.SourceRoots.First(root => IsUnder(root.Path, asset.FullPath));
+            var reference = ProjectPreviewFinder.Find(asset.FullPath, source.Path, previewCache);
+            asset = asset with { HasReferencePreview = reference is not null, ReferencePreviewPath = reference };
             if (!_customCovers.TryGetValue(asset.Id, out var name) || Path.GetFileName(name) != name) return asset;
             var path = Path.Combine(_covers, name);
             return File.Exists(path) ? asset with { HasCover = true, CoverPath = path } : asset;
-        }).ToArray(),
-    };
+        }).ToArray() };
+    }
 
     private static bool IsUnder(string root, string file) => Path.GetFullPath(file).StartsWith(
         Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);

@@ -111,6 +111,14 @@ body.dark .tag{background:#2c384a;color:#d0daea}body.dark .tag:nth-child(2){back
 .asset,.inspectCover{user-select:none}.cover img,.inspectCover img{-webkit-user-drag:none}
 .app.gridmode .assetgrid{grid-template-columns:repeat(auto-fill,minmax(min(100%,var(--card-size,260px)),var(--card-size,260px)))}
 .app.listmode .cover{width:calc(var(--card-size,260px) * .55);min-height:calc(var(--card-size,260px) * .4)}
+.asset .aname{white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-height:1.45;max-height:2.9em;overflow:hidden;overflow-wrap:anywhere}
+.asset .origin{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.5}
+.app.boardmode .asset.no-preview .cover{aspect-ratio:2.2}
+.reference-preview .mark{background:#fff7e6;color:#805b15;border-color:#e9d6a8}
+.app.boardmode .asset.reference-preview .cover{aspect-ratio:4/3}
+.preview-filters{display:inline-flex;gap:6px;border-left:1px solid var(--line);padding-left:10px;margin-left:3px;flex-wrap:wrap}
+.library-pager{display:flex;align-items:center;gap:10px;font-size:11px;color:var(--muted);margin-bottom:12px}
+.library-pager[hidden]{display:none}
 </style>
 </head>
 <body>

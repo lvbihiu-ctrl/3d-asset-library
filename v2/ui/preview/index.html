@@ -30,6 +30,11 @@ body{background:var(--page)}.wrap{width:100%;max-width:none;padding:8px}.app{bor
 .asset,.inspectCover{user-select:none}.cover img,.inspectCover img{-webkit-user-drag:none}
 .app.gridmode .assetgrid{grid-template-columns:repeat(auto-fill,minmax(min(100%,var(--card-size,260px)),var(--card-size,260px)))}
 .app.listmode .cover{width:calc(var(--card-size,260px) * .55);min-height:calc(var(--card-size,260px) * .4)}
+.asset .aname{white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-height:1.45;max-height:2.9em;overflow:hidden;overflow-wrap:anywhere}
+.asset .origin{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.app.boardmode .asset.no-preview .cover{aspect-ratio:2.2}
+.app.boardmode .asset.reference-preview .cover{aspect-ratio:4/3}
+.preview-filters,.library-pager{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.library-pager{margin-bottom:12px}.library-pager[hidden]{display:none}
 </style>
 </head><body>
 

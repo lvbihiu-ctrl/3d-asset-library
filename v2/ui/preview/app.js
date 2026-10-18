@@ -64,6 +64,9 @@ let toastTimeout;
 let realMode = false;
 let librarySummary = null;
 let sourceRoots = [];
+let previewFilter = 'all';
+let pageIndex = 0;
+let lastResultKey = '';
 let hostInfo = null;
 let scanning = false;
 let clipboardBusy = false;
@@ -162,7 +165,8 @@ function matchesFilters(asset) {
   const chipMatches = state.chip === '全部' || asset.category === state.chip || asset.tag === state.chip;
   const searchMatches = !query || [asset.name, asset.category, asset.folder, asset.tag, asset.source, asset.extension, asset.sourceRootName || '']
     .some(value => String(value).toLocaleLowerCase().includes(query));
-  return filterMatches && chipMatches && searchMatches && (!imageResults || imageResults.has(asset.id));
+  const previewMatches = previewFilter === 'all' || (previewFilter === 'available' ? asset.hasCover || asset.hasReferencePreview : !asset.hasCover && !asset.hasReferencePreview);
+  return filterMatches && chipMatches && searchMatches && previewMatches && (!imageResults || imageResults.has(asset.id));
 }
 
 function navButton(key, iconName, label, number) {
@@ -222,10 +226,20 @@ function renderChips() {
       render();
     };
   });
+  if (realMode) {
+    const controls = document.createElement('span');
+    controls.className = 'preview-filters';
+    const available = items.filter(asset => asset.hasCover || asset.hasReferencePreview).length;
+    controls.innerHTML = [['all','全部预览',items.length],['available','有预览',available],['missing','待配图',items.length-available]].map(([value,label,count]) =>
+      `<button type="button" data-preview="${value}" class="chip ${previewFilter === value ? 'active' : ''}" aria-pressed="${previewFilter === value}">${label} ${count}</button>`).join('');
+    controls.querySelectorAll('button').forEach(button => { button.onclick = () => { previewFilter = button.dataset.preview; pageIndex = 0; render(); }; });
+    $('chips').append(controls);
+  }
 }
 
 function resetFilters() {
   imageResults = null;
+  previewFilter = 'all'; pageIndex = 0;
   state.filter = 'all';
   state.query = '';
   state.chip = '全部';
@@ -234,8 +248,18 @@ function resetFilters() {
 }
 
 function renderCards() {
-  const visible = items.filter(matchesFilters);
-  if (imageResults) visible.sort((a, b) => imageResults.get(a.id) - imageResults.get(b.id));
+  const filtered = items.filter(matchesFilters);
+  if (imageResults) filtered.sort((a, b) => imageResults.get(a.id) - imageResults.get(b.id));
+  const resultKey = [state.filter,state.chip,state.query,previewFilter,imageResults ? 'image' : 'all'].join('|');
+  if (resultKey !== lastResultKey) { pageIndex = 0; lastResultKey = resultKey; }
+  const pageSize = realMode ? 80 : Math.max(1,filtered.length);
+  const pageCount = Math.max(1,Math.ceil(filtered.length / pageSize));
+  pageIndex = Math.min(pageIndex,pageCount-1);
+  const visible = filtered.slice(pageIndex * pageSize,(pageIndex+1)*pageSize);
+  $('libraryPager').hidden = !realMode || filtered.length <= pageSize;
+  $('pageRange').textContent = `${pageIndex * pageSize + 1}–${Math.min((pageIndex+1)*pageSize,filtered.length)} / ${filtered.length} 条`;
+  $('pagePrev').disabled = pageIndex === 0; $('pageNext').disabled = pageIndex === pageCount-1;
+  $('assets').dataset.totalResults = String(filtered.length);
   const focusId = visible.some(asset => asset.id === state.selected) ? state.selected : visible[0]?.id;
   const filterTitle = state.filter === 'all' ? '全部素材'
     : state.filter === 'favorite' ? '我的收藏'
@@ -246,7 +270,7 @@ function renderCards() {
               : state.filter.slice(state.filter.indexOf(':') + 1);
   $('pageName').textContent = imageResults ? '以图搜图 · 基础相似度' : filterTitle;
   $('pageCount').textContent = realMode
-    ? `${visible.length} / ${items.length} 个真实模型 · ${librarySummary?.rootName || '本地素材库'}`
+    ? `${filtered.length} / ${items.length} 个真实模型 · ${librarySummary?.rootName || '本地素材库'} · ${items.filter(asset => asset.hasCover).length} 张素材封面 · ${items.filter(asset => !asset.hasCover && asset.hasReferencePreview).length} 张项目参考图`
     : `${visible.length} 条合成测试记录 · 未读取本机模型`;
   if (realMode) {
     const errors = Number(librarySummary?.errorCount || 0);
@@ -272,11 +296,18 @@ function renderCards() {
   }
   const cardElements = [...$('assets').querySelectorAll('article.asset')];
   cardElements.forEach((element, index) => {
+    const asset = visible[index];
+    element.classList.toggle('no-preview', !asset.hasCover && !asset.hasReferencePreview);
+    element.classList.toggle('reference-preview', !asset.hasCover && Boolean(asset.hasReferencePreview));
+    if (!asset.hasCover && asset.hasReferencePreview) element.querySelector('.mark').textContent = imageResults ? '项目参考 · 差异 ' + imageResults.get(asset.id) + '/64' : '项目参考图';
+    const origin = element.querySelector('.origin');
+    origin.title = asset.relativePath || asset.folder;
+    if (realMode) origin.textContent = asset.extension + ' · ' + asset.folder.split(/[\\/]/).filter(Boolean).slice(-2).join(' / ');
     const image = element.querySelector('img');
     image.draggable = false;
     const measureImage = () => {
       const asset = visible[index];
-      if (!asset.real || !image.naturalWidth || !image.naturalHeight) return;
+      if (!asset.real || (!asset.hasCover && !asset.hasReferencePreview) || !image.naturalWidth || !image.naturalHeight) return;
       asset.ratio = image.naturalWidth / image.naturalHeight;
       element.style.setProperty('--ar', asset.ratio);
       scheduleMasonry();
@@ -374,6 +405,10 @@ function renderDetail() {
     $('detail').innerHTML = `<div class="inspectCover"><img src="${xss(asset.src)}" alt="${xss(asset.name)}"></div><div class="detailName">${xss(asset.name)}</div><div class="small">${asset.hasCover ? '已关联真实封面 · Ctrl+V 可更换' : '选中后 Ctrl+V 粘贴图片设置封面'}</div><div class="rule"></div><div class="fieldLabel">原文件（只读）</div><div class="small">${xss(asset.relativePath)}</div><div class="rule"></div><div class="small">格式：<b>${xss(asset.extension)}</b><br>大小：${xss(formatBytes(asset.sizeBytes))}<br>修改时间：${xss(modified)}</div><div class="rule"></div><button type="button" class="toolbtn primary" id="detailLocate">${icon('locate')}在资源管理器中定位</button><div class="unavailable-callout">${icon('info')}<span><b>C4D 拖入尚未接入</b><br>Issue #15 仍待实机验证。</span></div><div class="inspectNote">封面和索引保存于独立缓存，不修改原素材。</div>`;
     $('detailLocate').onclick = locateSelected;
     $('detail').querySelector('img').draggable = false;
+    if (!asset.hasCover && asset.hasReferencePreview) {
+      $('detail').querySelector('.small').textContent = '项目参考图 · 非该模型专属封面';
+      $('detail').querySelector('.inspectNote').textContent = '图片来自项目的封面目录，仅作参考。选中后 Ctrl+V 可设置该模型的专属封面。';
+    }
     if (canDragAsset()) $('detail').querySelector('.unavailable-callout').innerHTML = `${icon('info')}<span><b>拖动左侧卡片，拖出原模型</b><br>在 C4D 中按住 Shift 拖入可尝试合并；接收结果以 C4D 为准。</span>`;
     return;
   }
@@ -507,6 +542,7 @@ async function nativeOperation(action, payload = {}) {
 function applyRealCatalog(catalog) {
   imageResults = null;
   realMode = true;
+  pageIndex = 0;
   librarySummary = catalog;
   sourceRoots = catalog.sourceRoots || catalog.roots || [{id:'legacy',name:catalog.rootName,path:catalog.root,available:catalog.rootAvailable !== false}];
   cats = [...new Set(catalog.assets.map(asset => asset.extension))].sort();
@@ -519,7 +555,7 @@ function applyRealCatalog(catalog) {
     tag: asset.hasCover ? '有封面' : '缺封面',
     source: asset.fileName,
     ratio: 1.34,
-    src: asset.hasCover ? `https://assetlibrary-covers.local/${encodeURIComponent(asset.id)}` : missingCover(asset.extension),
+    src: asset.hasCover || asset.hasReferencePreview ? `https://assetlibrary-covers.local/${encodeURIComponent(asset.id)}` : missingCover(asset.extension),
     fav: false,
     real: true,
   }));
@@ -613,6 +649,7 @@ async function searchImage() {
   try {
     const result = await host('searchSimilarClipboard');
     imageResults = new Map(result.matches.map(match => [match.assetId, match.distance]));
+    previewFilter = 'all'; pageIndex = 0;
     state.query = ''; state.filter = 'all'; state.chip = '全部';
     $('search').value = '';
     state.selected = result.matches[0]?.assetId ?? null;
@@ -645,6 +682,12 @@ rescanButton.innerHTML = icon('refresh') + '<span>重新扫描</span>';
 $('locateFile').after(rescanButton);
 rescanButton.onclick = () => importFolder('rescanLibrary');
 $('importFolder').onclick = () => importFolder();
+const pager = document.createElement('div');
+pager.id = 'libraryPager'; pager.className = 'library-pager'; pager.hidden = true;
+pager.innerHTML = '<button type="button" class="toolbtn" id="pagePrev">上一页</button><span id="pageRange" role="status"></span><button type="button" class="toolbtn" id="pageNext">下一页</button>';
+$('hintline').before(pager);
+$('pagePrev').onclick = () => { pageIndex--; renderCards(); $('mainContent').scrollTop=0; };
+$('pageNext').onclick = () => { pageIndex++; renderCards(); $('mainContent').scrollTop=0; };
 $('gridBtn').onclick = () => { state.layout = 'grid'; render(); };
 $('listBtn').onclick = () => { state.layout = 'list'; render(); };
 $('boardBtn').onclick = () => { state.layout = 'board'; render(); };

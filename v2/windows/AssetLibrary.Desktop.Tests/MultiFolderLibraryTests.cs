@@ -76,5 +76,41 @@ public sealed class MultiFolderLibraryTests : IDisposable
         Assert.False(scanner.Scan(b).Assets.Single(asset => asset.Name == "b").HasCover);
     }
 
+    [Fact]
+    public void ProjectReferencePreviewIsSeparateFromModelCoverAndRespectsSelectedRoot()
+    {
+        var root = Folder("project");
+        var models = Folder(Path.Combine("project", "work", "models"));
+        var previewFolder = Folder(Path.Combine("project", "00_封面Cover"));
+        var model = Path.Combine(models,"a.c4d"); File.WriteAllText(model,"original");
+        var projectImage = Path.Combine(previewFolder,"manual_cover.jpg"); Image(projectImage);
+        var hash = SHA256.HashData(File.ReadAllBytes(projectImage));
+        var scanner = new LibraryScanner();
+        var store = new LocalLibraryStore(Folder("data"));
+        var catalog = store.SaveCatalog(scanner.Scan(root));
+        var asset = Assert.Single(catalog.Assets);
+        Assert.False(asset.HasCover);
+        Assert.True(asset.HasReferencePreview);
+        Assert.Equal(projectImage,asset.ReferencePreviewPath);
+        Assert.Null(asset.CoverPath);
+        using (var query = System.Drawing.Image.FromFile(projectImage))
+        {
+            var matches = new ImageSimilarity().Search(query, catalog.Assets);
+            Assert.Equal(asset.Id, Assert.Single(matches.Matches).AssetId);
+            Assert.Equal(0, matches.Matches[0].Distance);
+            Assert.Null(asset.CoverPath);
+        }
+        var restored = Assert.Single(store.Load()!.Assets);
+        Assert.Equal(projectImage,restored.ReferencePreviewPath);
+        var limited = new LocalLibraryStore(Folder("limited-data")).SaveCatalog(scanner.Scan(models));
+        Assert.False(Assert.Single(limited.Assets).HasReferencePreview);
+        Image(Path.Combine(models,"a.png"));
+        catalog = store.MergeScans(catalog,[scanner.Scan(root)]);
+        var session = new LibrarySession(); session.Replace(catalog);
+        Assert.True(session.TryGetCover(asset.Id,out var served));
+        Assert.Equal(Path.Combine(models,"a.png"),served);
+        Assert.Equal(hash,SHA256.HashData(File.ReadAllBytes(projectImage)));
+    }
+
     public void Dispose() { if (Directory.Exists(_root)) Directory.Delete(_root, true); }
 }

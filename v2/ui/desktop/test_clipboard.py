@@ -14,13 +14,20 @@ class ClipboardUIContract(unittest.TestCase):
         self.page = self.browser.new_page(viewport={"width": 1016, "height": 689})
         raw = re.sub(r'<script[^>]*src="[^"]+"[^>]*></script>', "", HTML.read_text(encoding="utf-8"))
         self.page.set_content(raw)
-        self.page.evaluate("""() => {
+        self.page.evaluate("""count => {
           window.testCalls = []; window.testClipboardError = false;
           const assets = ['a','b'].map((letter, index) => ({
             id:letter.repeat(64), name:'Model '+letter, fileName:letter+'.c4d', extension:'C4D',
             relativePath:letter+'.c4d', folder:'.', sizeBytes:100, hasCover:true,
             sourceRootId:letter.repeat(64),sourceRootName:'Folder '+letter
           }));
+          if(count>2) {
+            assets.splice(0,assets.length,...Array.from({length:count},(_,i)=>({
+              id:(i+1).toString(16).padStart(64,'0'),name:'Model '+i,fileName:'model-'+i+'.c4d',extension:'C4D',
+              relativePath:'project/very/long/folder/path/model-'+i+'.c4d',folder:'project/very/long/folder/path',
+              sizeBytes:100,hasCover:i%3===0,hasReferencePreview:i%3===1,sourceRootId:'a'.repeat(64),sourceRootName:'Folder a'
+            })));
+          }
           window.assetLibraryHost = {request:async (action,payload) => {
             window.testCalls.push({action,payload});
             if(action==='getHostInfo') return {capabilities:['getHostInfo','getLibrary','setCoverFromClipboard','searchSimilarClipboard','importFolder','rescanLibrary','locateAsset','beginAssetDrag']};
@@ -30,7 +37,7 @@ class ClipboardUIContract(unittest.TestCase):
             if(action==='setCoverFromClipboard') return {asset:assets.find(a=>a.id===payload.assetId),revision:'f'.repeat(32)};
             if(action==='searchSimilarClipboard') return {matches:[{assetId:'b'.repeat(64),distance:0},{assetId:'a'.repeat(64),distance:64}],skipped:0};
           }};
-        }""")
+        }""",120 if 'large_catalog' in self._testMethodName else 2)
         self.page.add_script_tag(content=BRIDGE.read_text(encoding="utf-8"))
         self.page.add_script_tag(content=APP.read_text(encoding="utf-8"))
         self.page.wait_for_function("document.documentElement.dataset.libraryReady === 'true'")
@@ -45,6 +52,33 @@ class ClipboardUIContract(unittest.TestCase):
         self.page.locator('#pasteCover').click()
         self.page.wait_for_function("document.documentElement.dataset.coverState === 'error'")
         self.assertIn('没有图片', self.page.locator('#toast').inner_text())
+
+    def test_large_catalog_paginates_but_search_and_preview_filters_cover_all_records(self):
+        self.assertEqual(80,self.page.locator('article.asset').count())
+        self.page.locator('#pageNext').click()
+        self.assertEqual(40,self.page.locator('article.asset').count())
+        self.assertIn('81',self.page.locator('#pageRange').inner_text())
+        self.page.locator('#search').fill('Model 119')
+        self.assertEqual(1,self.page.locator('article.asset').count())
+        self.assertIn('Model 119',self.page.locator('.aname').inner_text())
+        self.page.locator('#showAll').click()
+        self.page.locator('[data-preview="available"]').click()
+        self.assertEqual(80,self.page.locator('article.asset').count())
+        self.assertEqual(40,self.page.locator('article.asset.reference-preview').count())
+        self.page.locator('[data-preview="missing"]').click()
+        self.assertEqual(40,self.page.locator('article.asset').count())
+        origin=self.page.locator('article.asset .origin').first
+        self.assertEqual('nowrap',origin.evaluate('x=>getComputedStyle(x).whiteSpace'))
+        self.assertTrue(origin.get_attribute('title'))
+
+    def test_large_catalog_project_reference_does_not_make_a_portrait_card_extra_tall(self):
+        card=self.page.locator('article.reference-preview').first
+        card.locator('img').evaluate("img => img.src = 'data:image/svg+xml,'+encodeURIComponent('<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"400\" height=\"1000\"/>')")
+        self.page.wait_for_function("document.querySelector('article.reference-preview').style.getPropertyValue('--ar') === '0.4'")
+        self.page.wait_for_timeout(80)
+        cover=card.locator('.cover').bounding_box()
+        self.assertLessEqual(cover['height']/cover['width'],.76)
+        self.assertEqual('项目参考图',card.locator('.mark').inner_text())
 
     def test_ctrl_v_does_not_hijack_search_field_paste(self):
         self.page.locator('#search').focus()

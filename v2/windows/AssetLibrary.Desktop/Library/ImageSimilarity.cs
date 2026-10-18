@@ -41,8 +41,9 @@ public sealed class ImageSimilarity
         {
             try
             {
-                if (asset.CoverPath is null || !File.Exists(asset.CoverPath)) { skipped++; continue; }
-                var file = new FileInfo(asset.CoverPath);
+                var preview = asset.CoverPath is not null && File.Exists(asset.CoverPath) ? asset.CoverPath : asset.ReferencePreviewPath;
+                if (preview is null || !File.Exists(preview)) { skipped++; continue; }
+                var file = new FileInfo(preview);
                 if (!_cache.TryGetValue(file.FullName, out var cached)
                     || cached.Length != file.Length || cached.Modified != file.LastWriteTimeUtc)
                 {
