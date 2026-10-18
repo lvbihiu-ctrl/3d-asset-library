@@ -1,0 +1,11 @@
+<Project>
+  <!-- Microsoft.Web.WebView2 currently references both UI stacks. Remove the unused
+       WPF assembly in the app and transitive test build to avoid a WindowsBase
+       version conflict in WinForms-only .NET 10 projects. -->
+  <Target Name="RemoveUnusedWebView2UiAssembly" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <Reference Remove="@(Reference->WithMetadataValue('FileName', 'Microsoft.Web.WebView2.Wpf'))"
+                 Condition="'$(UseWpf)' != 'true'" />
+    </ItemGroup>
+  </Target>
+</Project>

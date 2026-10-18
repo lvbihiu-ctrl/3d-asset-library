@@ -34,6 +34,7 @@ Thumbs.db
 *.jpg
 *.jpeg
 *.png
+!docs/v2/evidence/issue-14/*.png
 *.bmp
 *.webp
 *.gif
@@ -64,6 +65,12 @@ assets/
 # Native launcher build outputs
 desktop-updates/native/launcher/bin/
 desktop-updates/native/launcher/obj/
+
+# V2 Windows host local build and browser state
+.artifacts/
+v2/windows/**/bin/
+v2/windows/**/obj/
+v2/windows/**/*.user
 desktop-updates/native/launcher/publish/
 
 # Secrets and machine-local credentials
