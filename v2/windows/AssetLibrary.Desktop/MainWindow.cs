@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using AssetLibrary.Desktop.Bridge;
+using AssetLibrary.Desktop.Library;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
@@ -16,11 +17,16 @@ internal sealed class MainWindow : Form
     private readonly HostOptions _options;
     private readonly WebView2 _webView = new() { Dock = DockStyle.Fill };
     private readonly HostMessageDispatcher _dispatcher;
+    private readonly LibraryScanner _libraryScanner = new();
+    private readonly LibrarySession _librarySession = new();
 
     public MainWindow(HostOptions options)
     {
         _options = options;
-        _dispatcher = new HostMessageDispatcher(CreateHostInfo);
+        _dispatcher = new HostMessageDispatcher(
+            CreateHostInfo,
+            ImportLibraryAsync,
+            assetId => ExplorerAssetLocator.Locate(_librarySession, assetId));
         Text = "3D 素材管理器 V2";
         ClientSize = new Size(1016, 689);
         MinimumSize = new Size(820, 600);
@@ -37,6 +43,14 @@ internal sealed class MainWindow : Form
         try
         {
             await InitializeWebViewAsync();
+            if (_options.LibraryTestRoot is not null)
+            {
+                await WebViewInteractionSmoke.VerifyRealLibraryAsync(_webView, () => _librarySession.Count);
+                Console.WriteLine("REAL LIBRARY PASS: 真实目录只读扫描、卡片、搜索和定位入口已在 WebView2 中验证。");
+                Close();
+                return;
+            }
+
             if (_options.UiInteractionTest)
             {
                 await WebViewInteractionSmoke.VerifyAsync(_webView);
@@ -124,6 +138,11 @@ internal sealed class MainWindow : Form
         core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
         core.WebResourceRequested += (_, args) =>
         {
+            if (TryServeCover(core, args))
+            {
+                return;
+            }
+
             if (!TrustedContentPolicy.IsTrustedResource(args.Request.Uri))
             {
                 args.Response = core.Environment.CreateWebResourceResponse(
@@ -160,7 +179,7 @@ internal sealed class MainWindow : Form
         Debug.WriteLine($"WebView2 Runtime: {runtimeVersion}");
     }
 
-    private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs args)
+    private async void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs args)
     {
         if (!TrustedContentPolicy.IsTrustedMessageSource(args.Source))
         {
@@ -179,8 +198,91 @@ internal sealed class MainWindow : Form
             return;
         }
 
-        _webView.CoreWebView2.PostWebMessageAsJson(_dispatcher.Dispatch(rawMessage));
+        var response = await _dispatcher.DispatchAsync(rawMessage);
+        if (!_webView.IsDisposed && _webView.CoreWebView2 is not null)
+        {
+            _webView.CoreWebView2.PostWebMessageAsJson(response);
+        }
     }
+
+    private async Task<ImportLibraryResult> ImportLibraryAsync()
+    {
+        if (_options.LibraryTestRoot is not null)
+        {
+            var automatedCatalog = await Task.Run(() => _libraryScanner.Scan(_options.LibraryTestRoot));
+            _librarySession.Replace(automatedCatalog);
+            return new ImportLibraryResult(false, automatedCatalog);
+        }
+
+        using var dialog = new FolderBrowserDialog
+        {
+            Description = "选择一个素材根目录（只读扫描 C4D / FBX / OBJ）",
+            ShowNewFolderButton = false,
+            UseDescriptionForTitle = true,
+        };
+
+        if (dialog.ShowDialog(this) != DialogResult.OK || string.IsNullOrWhiteSpace(dialog.SelectedPath))
+        {
+            return new ImportLibraryResult(true, null);
+        }
+
+        var selectedPath = Path.GetFullPath(dialog.SelectedPath);
+        var catalog = await Task.Run(() => _libraryScanner.Scan(selectedPath));
+        _librarySession.Replace(catalog);
+        return new ImportLibraryResult(false, catalog);
+    }
+
+    private bool TryServeCover(CoreWebView2 core, CoreWebView2WebResourceRequestedEventArgs args)
+    {
+        if (!TrustedContentPolicy.IsTrustedResource(args.Request.Uri)
+            || !Uri.TryCreate(args.Request.Uri, UriKind.Absolute, out var uri)
+            || !uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+            || !uri.Host.Equals(TrustedContentPolicy.VirtualHostName, StringComparison.OrdinalIgnoreCase)
+            || !uri.AbsolutePath.StartsWith("/__cover/", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var assetId = uri.AbsolutePath["/__cover/".Length..];
+        if (!_librarySession.TryGetCover(assetId, out var coverPath) || coverPath is null)
+        {
+            args.Response = core.Environment.CreateWebResourceResponse(
+                Stream.Null,
+                404,
+                "Not Found",
+                "Content-Type: text/plain; charset=utf-8");
+            return true;
+        }
+
+        try
+        {
+            var stream = File.OpenRead(coverPath);
+            args.Response = core.Environment.CreateWebResourceResponse(
+                stream,
+                200,
+                "OK",
+                $"Content-Type: {CoverContentType(coverPath)}\r\nCache-Control: no-store");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            args.Response = core.Environment.CreateWebResourceResponse(
+                Stream.Null,
+                404,
+                "Not Found",
+                "Content-Type: text/plain; charset=utf-8");
+        }
+
+        return true;
+    }
+
+    private static string CoverContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch
+    {
+        ".png" => "image/png",
+        ".jpg" or ".jpeg" => "image/jpeg",
+        ".webp" => "image/webp",
+        ".bmp" => "image/bmp",
+        _ => "application/octet-stream",
+    };
 
     private async Task WaitForBridgeAsync()
     {

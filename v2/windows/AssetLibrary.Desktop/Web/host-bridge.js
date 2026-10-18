@@ -9,10 +9,11 @@
     if (!transport) return Promise.reject(new Error('当前页面没有 Windows 原生宿主。'));
     const id = `page-${Date.now()}-${++sequence}`;
     return new Promise((resolve, reject) => {
+      const timeoutMs = action === 'importFolder' ? 5 * 60 * 1000 : 5000;
       const timer = window.setTimeout(() => {
         pending.delete(id);
         reject(new Error('Windows 宿主响应超时。'));
-      }, 5000);
+      }, timeoutMs);
       pending.set(id, { resolve, reject, timer });
       transport.postMessage({ id, action, payload });
     });

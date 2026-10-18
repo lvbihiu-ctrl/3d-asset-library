@@ -5,6 +5,8 @@ namespace AssetLibrary.Desktop;
 
 internal static class WebViewInteractionSmoke
 {
+    private static readonly TimeSpan LibraryTimeout = TimeSpan.FromSeconds(30);
+
     public static async Task VerifyAsync(WebView2 webView)
     {
         const string script = """
@@ -73,6 +75,70 @@ internal static class WebViewInteractionSmoke
         }
     }
 
+    public static async Task VerifyRealLibraryAsync(WebView2 webView, Func<int> expectedCount)
+    {
+        await webView.CoreWebView2.ExecuteScriptAsync(
+            "document.querySelector('#importFolder').click(); true");
+
+        var deadline = DateTime.UtcNow + LibraryTimeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            var ready = await webView.CoreWebView2.ExecuteScriptAsync(
+                "document.querySelector('#assets')?.getAttribute('aria-label') === '真实素材'");
+            if (ready == "true")
+            {
+                break;
+            }
+
+            await Task.Delay(100).ConfigureAwait(true);
+        }
+
+        const string script = """
+            (() => {
+              const cards = [...document.querySelectorAll('#assets article.asset')];
+              if (!cards.length) return { count: 0 };
+              const firstName = cards[0].querySelector('.aname')?.textContent || '';
+              const search = document.querySelector('#search');
+              search.value = firstName;
+              search.dispatchEvent(new Event('input', { bubbles: true }));
+              const filtered = document.querySelectorAll('#assets article.asset').length;
+              document.querySelector('#showAll').click();
+              return {
+                count: cards.length,
+                filtered,
+                firstName,
+                selected: document.querySelector('#detail .detailName')?.textContent || '',
+                realLabel: document.querySelector('#assets')?.getAttribute('aria-label') || '',
+                pageCount: document.querySelector('#pageCount')?.textContent || '',
+                hint: document.querySelector('#hintline')?.textContent || '',
+                locateEnabled: !document.querySelector('#locateFile')?.disabled,
+                modelState: cards[0].querySelector('.model-state')?.textContent || ''
+              };
+            })()
+            """;
+
+        var rawResult = await webView.CoreWebView2.ExecuteScriptAsync(script);
+        var result = JsonSerializer.Deserialize<RealLibraryResult>(rawResult, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+        }) ?? throw new InvalidDataException("Real library UI interaction result was empty.");
+
+        var nativeCount = expectedCount();
+        if (result.Count < 1
+            || result.Count != nativeCount
+            || result.Filtered < 1
+            || result.RealLabel != "真实素材"
+            || result.PageCount.Contains("合成", StringComparison.Ordinal)
+            || !result.Hint.Contains("真实素材只读索引", StringComparison.Ordinal)
+            || !result.LocateEnabled
+            || !result.ModelState.Contains("原模型只读", StringComparison.Ordinal)
+            || string.IsNullOrWhiteSpace(result.FirstName)
+            || result.Selected != result.FirstName)
+        {
+            throw new InvalidDataException($"Real library WebView2 verification failed: {rawResult}");
+        }
+    }
+
     private sealed record InteractionResult(
         int SearchCount,
         int CategoryCount,
@@ -83,4 +149,15 @@ internal static class WebViewInteractionSmoke
         string? Selected,
         string? Detail,
         string? ExpectedName);
+
+    private sealed record RealLibraryResult(
+        int Count,
+        int Filtered,
+        string FirstName,
+        string Selected,
+        string RealLabel,
+        string PageCount,
+        string Hint,
+        bool LocateEnabled,
+        string ModelState);
 }
