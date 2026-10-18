@@ -1,0 +1,26 @@
+name: V2 PR filename safety
+on:
+  pull_request:
+    branches: [v2-dev]
+  push:
+    branches: ['v2/27-*']
+permissions:
+  contents: read
+jobs:
+  path-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Synthetic policy tests
+        run: python -m unittest discover -s v2/ci -p 'test_*.py' -v
+      - name: Check changed paths
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python v2/ci/protect_v2_pr.py --base "$BASE_SHA" --head "$HEAD_SHA"
