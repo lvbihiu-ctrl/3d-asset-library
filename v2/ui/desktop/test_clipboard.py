@@ -71,14 +71,34 @@ class ClipboardUIContract(unittest.TestCase):
         self.assertEqual('nowrap',origin.evaluate('x=>getComputedStyle(x).whiteSpace'))
         self.assertTrue(origin.get_attribute('title'))
 
-    def test_large_catalog_project_reference_does_not_make_a_portrait_card_extra_tall(self):
+    def test_large_catalog_reference_keeps_natural_portrait_and_banner_proportions(self):
         card=self.page.locator('article.reference-preview').first
         card.locator('img').evaluate("img => img.src = 'data:image/svg+xml,'+encodeURIComponent('<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"400\" height=\"1000\"/>')")
         self.page.wait_for_function("document.querySelector('article.reference-preview').style.getPropertyValue('--ar') === '0.4'")
         self.page.wait_for_timeout(80)
         cover=card.locator('.cover').bounding_box()
-        self.assertLessEqual(cover['height']/cover['width'],.76)
+        self.assertAlmostEqual(cover['width']/cover['height'],.4,places=2)
         self.assertEqual('项目参考图',card.locator('.mark').inner_text())
+        card.locator('img').evaluate("img => img.src = 'data:image/svg+xml,'+encodeURIComponent('<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1000\" height=\"400\"/>')")
+        self.page.wait_for_function("document.querySelector('article.reference-preview').style.getPropertyValue('--ar') === '2.5'")
+        self.page.wait_for_timeout(80)
+        banner=card.locator('.cover').bounding_box()
+        self.assertAlmostEqual(banner['width']/banner['height'],2.5,places=2)
+
+    def test_large_catalog_columns_fill_width_and_keep_even_gaps_without_overlap(self):
+        for width,height in ((820,600),(1016,689),(1920,1080)):
+            self.page.set_viewport_size({'width':width,'height':height})
+            self.page.evaluate('() => new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))')
+            area=self.page.locator('#assets').bounding_box()
+            boxes=self.page.locator('article.asset').evaluate_all('cards=>cards.map(c=>{const r=c.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height}})')
+            self.assertLess(abs(max(b['x']+b['w'] for b in boxes)-(area['x']+area['width'])),1)
+            columns=sorted(set(round(b['x'],2) for b in boxes))
+            self.assertGreaterEqual(len(columns),2)
+            for left,right in zip(columns,columns[1:]):
+                self.assertAlmostEqual(right-left-boxes[0]['w'],14,delta=.1)
+            for i,a in enumerate(boxes):
+                for b in boxes[i+1:]:
+                    self.assertTrue(a['x']+a['w']<=b['x']+.1 or b['x']+b['w']<=a['x']+.1 or a['y']+a['h']<=b['y']+.1 or b['y']+b['h']<=a['y']+.1)
 
     def test_ctrl_v_does_not_hijack_search_field_paste(self):
         self.page.locator('#search').focus()

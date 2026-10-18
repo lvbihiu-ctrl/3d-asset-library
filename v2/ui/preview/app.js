@@ -85,8 +85,13 @@ function scheduleMasonry() {
     area.style.height = '';
     if (state.layout !== 'board' || !cards.length) return;
     const gap = 14;
-    const width = Math.min(cardSize, area.clientWidth);
-    const columns = Math.min(cards.length, Math.max(1, Math.floor((area.clientWidth + gap) / (width + gap))));
+    // Treat the saved size as a density target, not a rigid pixel width.
+    // Fill complete rows, but never inflate a sparse search result into giant cards.
+    const capacity = Math.max(1, Math.round((area.clientWidth + gap) / (cardSize + gap)));
+    const columns = Math.min(cards.length, capacity);
+    const width = cards.length < capacity || capacity === 1
+      ? Math.min(cardSize, area.clientWidth)
+      : (area.clientWidth - gap * (columns - 1)) / columns;
     const bottoms = Array(columns).fill(0);
     cards.forEach(card => { card.style.width = width + 'px'; });
     const heights = cards.map(card => card.offsetHeight);

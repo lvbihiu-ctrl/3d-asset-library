@@ -1,5 +1,7 @@
 # Large-library browsing and project reference previews — 2026-10-19
 
+> Historical delivery record: its fixed 4:3 reference frames were subsequently rejected by the user and superseded by [fluid natural-ratio masonry](FLUID_MASONRY_RESULTS.md). Pagination and reference identification remain in use.
+
 ## Observed problem
 
 The user's real catalog contained 1,034 records (971 C4D, 57 FBX, 6 OBJ), with only 11 records having existing readable model covers. Missing-cover records spanned 471 folders; 411 of those folders had no sibling image. Random PNG names and texture thumbnails could not safely be treated as matching renders. Long folder text wrapped on every card, while all records were rendered into the same material wall.

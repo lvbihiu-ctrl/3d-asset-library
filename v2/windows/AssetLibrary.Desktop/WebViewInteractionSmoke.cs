@@ -122,17 +122,18 @@ internal static class WebViewInteractionSmoke
     {
         const string readWidth = "document.querySelector('article.asset').getBoundingClientRect().width";
         var desired = JsonSerializer.Deserialize<double>(await webView.CoreWebView2.ExecuteScriptAsync("parseFloat(document.querySelector('#app').style.getPropertyValue('--card-size'))"));
-        await WaitForCardWidthAsync(webView, desired);
+        await WaitForFluidCardWidthAsync(webView);
         var before = JsonSerializer.Deserialize<double>(await webView.CoreWebView2.ExecuteScriptAsync(readWidth));
         var sidebarBefore = await webView.CoreWebView2.ExecuteScriptAsync("document.querySelector('.nav').getBoundingClientRect().width");
         var direction = desired >= 456 ? 120 : -120;
         await webView.CoreWebView2.ExecuteScriptAsync($"document.querySelector('.main').dispatchEvent(new WheelEvent('wheel',{{ctrlKey:true,deltaY:{direction},bubbles:true,cancelable:true}})); true");
         // Background/occluded WebView2 windows can throttle requestAnimationFrame.
         // Wait for the real layout change rather than assuming a 100 ms paint deadline.
-        await WaitForCardWidthAsync(webView, before + (direction < 0 ? 24 : -24));
+        await WaitForFluidCardWidthAsync(webView);
         var enlarged = JsonSerializer.Deserialize<double>(await webView.CoreWebView2.ExecuteScriptAsync(readWidth));
+        var changedTarget = JsonSerializer.Deserialize<double>(await webView.CoreWebView2.ExecuteScriptAsync("parseFloat(document.querySelector('#app').style.getPropertyValue('--card-size'))"));
         var sidebarAfter = await webView.CoreWebView2.ExecuteScriptAsync("document.querySelector('.nav').getBoundingClientRect().width");
-        if (enlarged == before || sidebarBefore != sidebarAfter || webView.ZoomFactor != 1 || webView.CoreWebView2.Settings.IsZoomControlEnabled)
+        if (changedTarget != desired + (direction < 0 ? 24 : -24) || sidebarBefore != sidebarAfter || webView.ZoomFactor != 1 || webView.CoreWebView2.Settings.IsZoomControlEnabled)
             throw new InvalidDataException($"Card zoom verification failed: before={before}, enlarged={enlarged}, sidebar={sidebarBefore}/{sidebarAfter}, zoom={webView.ZoomFactor}, pageZoomEnabled={webView.CoreWebView2.Settings.IsZoomControlEnabled}.");
 
         var reloaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -151,14 +152,30 @@ internal static class WebViewInteractionSmoke
             }
             await WaitForCardWidthAsync(webView, enlarged);
             var restored = JsonSerializer.Deserialize<double>(await webView.CoreWebView2.ExecuteScriptAsync(readWidth));
-            if (restored != enlarged) throw new InvalidDataException("Card size did not survive page reload.");
+            var restoredTarget = JsonSerializer.Deserialize<double>(await webView.CoreWebView2.ExecuteScriptAsync("parseFloat(document.querySelector('#app').style.getPropertyValue('--card-size'))"));
+            if (Math.Abs(restored - enlarged) > .5 || restoredTarget != changedTarget) throw new InvalidDataException("Card size did not survive page reload.");
             await webView.CoreWebView2.ExecuteScriptAsync($"document.querySelector('.main').dispatchEvent(new WheelEvent('wheel',{{ctrlKey:true,deltaY:{-direction},bubbles:true,cancelable:true}})); true");
             await WaitForCardWidthAsync(webView, before);
             var reduced = JsonSerializer.Deserialize<double>(await webView.CoreWebView2.ExecuteScriptAsync(readWidth));
-            if (reduced != before) throw new InvalidDataException("Ctrl+wheel down did not restore the smaller card size.");
-            Console.WriteLine("CARD ZOOM PASS: Ctrl+wheel handler enlarged/reduced cards, sidebar/page scale unchanged, saved size survived WebView2 reload.");
+            if (Math.Abs(reduced - before) > .5) throw new InvalidDataException("Ctrl+wheel down did not restore the smaller card size.");
+            Console.WriteLine("CARD ZOOM PASS: Ctrl+wheel changed density target, fluid column widths verified, sidebar/page scale unchanged, preference survived WebView2 reload.");
         }
         finally { webView.CoreWebView2.NavigationCompleted -= OnReload; }
+    }
+
+    private static async Task WaitForFluidCardWidthAsync(WebView2 webView)
+    {
+        const string expectedWidth = """
+            (() => {
+              const available = document.querySelector('#assets').clientWidth;
+              const target = parseFloat(document.querySelector('#app').style.getPropertyValue('--card-size'));
+              const count = document.querySelectorAll('article.asset').length;
+              const capacity = Math.max(1, Math.round((available + 14) / (target + 14)));
+              const columns = Math.min(count, capacity);
+              return count < capacity || capacity === 1 ? Math.min(target, available) : (available - 14 * (columns - 1)) / columns;
+            })()
+            """;
+        await WaitForCardWidthAsync(webView, JsonSerializer.Deserialize<double>(await webView.CoreWebView2.ExecuteScriptAsync(expectedWidth)));
     }
 
     private static async Task WaitForCardWidthAsync(WebView2 webView, double expected)
