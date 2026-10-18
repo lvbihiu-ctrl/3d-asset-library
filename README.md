@@ -2,6 +2,12 @@
 
 三维素材管理器：以图搜图、C4D 素材索引、移动硬盘素材管理与 Codex 开发项目。
 
+## 项目经验与当前进展
+
+[项目经验手册](docs/experience/README.md)按产品、界面、数据、Windows/C4D、更新发布、测试和 AI 协作分类，供用户、网页版 ChatGPT 与 Windows Codex 共同交接。
+
+[当前状态与下一步](docs/experience/08-current-state-and-next-steps.md)区分正式 v0.1.7、`v2-dev`、未合并功能分支和本机试用结果。下文 V14 说明属于历史原型，不代表当前 V2 的全部能力；不要据此回退正在使用的程序。
+
 ## V14 Windows 原型
 
 > 当前基线：V14，**落地测试原型**，不是正式交付软件。
