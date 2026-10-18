@@ -1,0 +1,105 @@
+name: V2 Windows WebView2 host
+
+on:
+  pull_request:
+    branches: [v2-dev]
+    paths:
+      - "v2/windows/**"
+      - "app/素材工作台.html"
+      - ".github/workflows/v2-windows-webview-host.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test-smoke:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: v2/windows
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore AssetLibrary.V2.sln
+
+      - name: Test
+        run: >-
+          dotnet test AssetLibrary.V2.sln
+          --configuration Release
+          --no-restore
+          --logger "trx;LogFileName=v2-host-tests.trx"
+          --results-directory "$env:RUNNER_TEMP\TestResults"
+
+      - name: Restore win-x64 runtime packs
+        run: >-
+          dotnet restore AssetLibrary.Desktop\AssetLibrary.Desktop.csproj
+          --runtime win-x64
+
+      - name: Publish self-contained win-x64 client
+        run: >-
+          dotnet publish AssetLibrary.Desktop\AssetLibrary.Desktop.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained true
+          --no-restore
+          --output "$env:RUNNER_TEMP\v2-host\win-x64"
+
+      - name: Start real WebView2 process and capture screenshots
+        run: |
+          $exe = "$env:RUNNER_TEMP\v2-host\win-x64\AssetLibrary.V2.exe"
+          $userData = "$env:RUNNER_TEMP\v2-host\webview2-user-data"
+          $screenshots = "$env:RUNNER_TEMP\v2-host\screenshots"
+          $smoke = Start-Process -FilePath $exe -ArgumentList @(
+            '--smoke-test', '--user-data-dir', $userData
+          ) -WindowStyle Hidden -Wait -PassThru
+          if ($smoke.ExitCode -ne 0) {
+            throw "WebView2 smoke test failed with exit code $($smoke.ExitCode)."
+          }
+          $capture = Start-Process -FilePath $exe -ArgumentList @(
+            '--capture-directory', $screenshots,
+            '--user-data-dir', $userData
+          ) -WindowStyle Hidden -Wait -PassThru
+          if ($capture.ExitCode -ne 0) {
+            throw "WebView2 screenshot run failed with exit code $($capture.ExitCode)."
+          }
+          Get-ChildItem $screenshots -Filter *.png | ForEach-Object {
+            Write-Host "$($_.Name) $($_.Length) bytes"
+          }
+
+      - name: Confirm stable v0.1.7 release files are untouched
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        working-directory: .
+        run: >-
+          git diff --exit-code $env:BASE_SHA HEAD --
+          desktop-updates/native/app-v0.1.7.ps1
+          desktop-updates/native/latest.json
+
+      - name: Package client
+        run: |
+          Compress-Archive `
+            -Path "$env:RUNNER_TEMP\v2-host\win-x64\*" `
+            -DestinationPath "$env:RUNNER_TEMP\3D-Asset-Library-V2-Issue14-win-x64.zip"
+
+      - name: Upload Windows client and evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: 3D-Asset-Library-V2-Issue14-win-x64
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}\3D-Asset-Library-V2-Issue14-win-x64.zip
+            ${{ runner.temp }}\v2-host\screenshots\*.png
+            ${{ runner.temp }}\TestResults\*.trx
