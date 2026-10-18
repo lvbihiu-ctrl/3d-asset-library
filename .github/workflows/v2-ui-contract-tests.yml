@@ -1,0 +1,27 @@
+name: V2 UI update contract tests
+
+on:
+  push:
+    branches: [ 'v2/**' ]
+    paths:
+      - 'v2/ui/update/**'
+      - '.github/workflows/v2-ui-contract-tests.yml'
+  pull_request:
+    branches: [ 'v2-dev' ]
+    paths:
+      - 'v2/ui/update/**'
+      - '.github/workflows/v2-ui-contract-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  update-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test native updater UI behavior (no native install claim)
+        run: node --test v2/ui/update/bridge.test.cjs
