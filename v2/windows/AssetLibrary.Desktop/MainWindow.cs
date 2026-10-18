@@ -21,7 +21,7 @@ internal sealed class MainWindow : Form
     {
         _options = options;
         _dispatcher = new HostMessageDispatcher(CreateHostInfo);
-        Text = "3D 素材管理器 · V2 Windows 预览";
+        Text = "3D 素材管理器 V2";
         ClientSize = new Size(1016, 689);
         MinimumSize = new Size(820, 600);
         StartPosition = FormStartPosition.CenterScreen;
@@ -37,6 +37,14 @@ internal sealed class MainWindow : Form
         try
         {
             await InitializeWebViewAsync();
+            if (_options.UiInteractionTest)
+            {
+                await WebViewInteractionSmoke.VerifyAsync(_webView);
+                Console.WriteLine("UI INTERACTION PASS: 搜索、分类、主题、布局、卡片选择和滚动均已在 WebView2 中验证。");
+                Close();
+                return;
+            }
+
             if (_options.CaptureDirectory is not null)
             {
                 await ScreenshotCapture.CaptureRequiredAsync(
@@ -187,7 +195,7 @@ internal sealed class MainWindow : Form
                 // The host handshake alone does not prove the V2 UI rendered.
                 // Require actual masonry cards, search and sidebar before smoke-test success.
                 var screenReady = await _webView.CoreWebView2.ExecuteScriptAsync(
-                    "Boolean(document.querySelector('#search') && document.querySelector('#special-nav') && document.querySelectorAll('#assets article.asset').length >= 15)");
+                    "Boolean(document.querySelector('#app[data-ui-contract=\"issue-32\"]') && document.querySelector('#search') && document.querySelector('#special-nav') && document.querySelector('#inspector') && document.querySelectorAll('#assets article.asset').length >= 15)");
                 if (screenReady == "true")
                 {
                     return;
