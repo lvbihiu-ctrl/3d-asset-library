@@ -2,6 +2,7 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
+from contextlib import closing
 import tempfile
 import unittest
 
@@ -52,7 +53,7 @@ class MigrationContractTests(unittest.TestCase):
         self.assertEqual(result['assets'],2)
         self.assertEqual(result['covers'],1)
         self.assertEqual(before,self.file_hashes())
-        with sqlite3.connect(dest/'catalog.sqlite3') as c:
+        with closing(sqlite3.connect(dest/'catalog.sqlite3')) as c:
             row=c.execute('SELECT id,full_path FROM assets WHERE legacy_id=?',(self.i1,)).fetchone()
             self.assertEqual(row[1],self.p1)
             self.assertNotEqual(row[0],self.i1)
@@ -78,9 +79,10 @@ class MigrationContractTests(unittest.TestCase):
         import_legacy(self.legacy,beta)
         import_legacy(self.legacy,stable)
         self.assertNotEqual((beta/'catalog.sqlite3').resolve(),(stable/'catalog.sqlite3').resolve())
-        with sqlite3.connect(beta/'catalog.sqlite3') as c:
+        with closing(sqlite3.connect(beta/'catalog.sqlite3')) as c:
             c.execute("UPDATE assets SET name='edited beta' WHERE legacy_id=?",(self.i1,))
-        with sqlite3.connect(stable/'catalog.sqlite3') as c:
+            c.commit()
+        with closing(sqlite3.connect(stable/'catalog.sqlite3')) as c:
             self.assertEqual(c.execute('SELECT name FROM assets WHERE legacy_id=?',(self.i1,)).fetchone()[0],'lamp')
 
     def test_duplicate_old_ids_rejected_before_staging(self):
@@ -100,7 +102,7 @@ class MigrationContractTests(unittest.TestCase):
         dest=self.root/'out'
         r=import_legacy(self.legacy,dest)
         self.assertEqual((r['covers'],r['assignments']),(1,1))
-        with sqlite3.connect(dest/'catalog.sqlite3') as c:
+        with closing(sqlite3.connect(dest/'catalog.sqlite3')) as c:
             self.assertEqual(c.execute('SELECT COUNT(*) FROM covers').fetchone()[0],1)
             self.assertEqual(c.execute('SELECT COUNT(*) FROM assignments').fetchone()[0],1)
 
@@ -147,7 +149,7 @@ class MigrationContractTests(unittest.TestCase):
             manifest=json.loads((p/'verify.json').read_text())
             for rel,h in manifest.items():
                 self.assertEqual(hashlib.sha256((p/rel).read_bytes()).hexdigest(),h)
-            with sqlite3.connect(p/'catalog.sqlite3') as c:
+            with closing(sqlite3.connect(p/'catalog.sqlite3')) as c:
                 self.assertEqual(c.execute('PRAGMA integrity_check').fetchone()[0],'ok')
 
     def test_recovery_failure_does_not_delete_previous_point(self):

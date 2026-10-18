@@ -159,7 +159,7 @@ def import_legacy(legacy: Path, destination: Path) -> dict:
     """Publish a brand-new isolated snapshot. Never overwrite existing destination."""
     legacy = legacy.resolve(strict=True)
     catalog, covers, cats = read_legacy(legacy)
-    destination = destination.absolute()
+    destination = destination.resolve(strict=False)  # normalize Windows short/long paths before ancestry check
     if destination.exists() or destination.is_symlink():
         raise MigrationError('目标目录已经存在，拒绝覆盖已有 V2 或 Stable/Beta 数据')
     if destination == legacy or legacy in destination.parents or destination in legacy.parents:
