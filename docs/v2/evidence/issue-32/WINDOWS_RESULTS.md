@@ -40,9 +40,10 @@ Compared with the `v2-dev` baseline, 43.95% of pixels changed at 1016×689 and
 ## Local delivery artifact
 
 - ZIP: `.artifacts/issue-32-final/3D-Asset-Library-V2-Issue32-win-x64.zip`
-- ZIP size: 50,389,363 bytes
-- ZIP SHA256: `4AD7580C9CB52FEB73746BF4726372904EDD2CB8C9EF64A1D7DA119FEF9D649B`
+- ZIP size: 50,389,453 bytes
+- ZIP SHA256: `E7F833DBCD3B52E59BBBF4D02181C3771343D4866D51F0C7FCD8E1EF00E8766A`
 - EXE SHA256: `0B947DDB61A18CEE82C55116905F1F1FA88FEB8A65DD0E4AE10E920F7C4CDA66`
+- Application DLL SHA256: `5D471434956CFF19666C8D333481048C6517439E395DA80F8761B5F0C974B423`
 
 The pull-request workflow produces the corresponding downloadable GitHub
 Actions artifact. Generated ZIPs and screenshots are intentionally not

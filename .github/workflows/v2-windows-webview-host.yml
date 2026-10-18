@@ -124,6 +124,8 @@ jobs:
           $publish = "$env:RUNNER_TEMP\v2-baseline-publish"
           $screenshots = "$env:RUNNER_TEMP\v2-host\screenshots\before"
           $userData = "$env:RUNNER_TEMP\v2-baseline-user-data"
+          $baselineOut = "$env:RUNNER_TEMP\TestResults\baseline-capture-stdout.txt"
+          $baselineErr = "$env:RUNNER_TEMP\TestResults\baseline-capture-stderr.txt"
           git worktree add --detach $source $env:BASE_SHA
           try {
             # Keep the base UI unchanged but use the head's off-screen capture
@@ -136,10 +138,15 @@ jobs:
             dotnet publish "$source\v2\windows\AssetLibrary.Desktop\AssetLibrary.Desktop.csproj" `
               --configuration Release --runtime win-x64 --self-contained true `
               --no-restore --output $publish
+            $env:ASSET_LIBRARY_CAPTURE_LIGHT_ONLY = '1'
             $baseline = Start-Process -FilePath "$publish\AssetLibrary.V2.exe" -ArgumentList @(
               '--capture-directory', $screenshots,
               '--user-data-dir', $userData
-            ) -WindowStyle Hidden -Wait -PassThru
+            ) -WindowStyle Hidden -RedirectStandardOutput $baselineOut `
+              -RedirectStandardError $baselineErr -Wait -PassThru
+            Remove-Item Env:ASSET_LIBRARY_CAPTURE_LIGHT_ONLY
+            Get-Content $baselineOut -ErrorAction SilentlyContinue
+            Get-Content $baselineErr -ErrorAction SilentlyContinue
             if ($baseline.ExitCode -ne 0) {
               throw "Baseline WebView2 screenshot run failed with exit code $($baseline.ExitCode)."
             }
@@ -183,3 +190,4 @@ jobs:
             ${{ runner.temp }}\TestResults\*.trx
             ${{ runner.temp }}\TestResults\ui-tests.txt
             ${{ runner.temp }}\TestResults\capture-*.txt
+            ${{ runner.temp }}\TestResults\baseline-capture-*.txt

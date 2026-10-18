@@ -17,6 +17,14 @@ internal static class ScreenshotCapture
             await CapturePngAsync(webView, window, size, outputPath);
         }
 
+        if (string.Equals(
+            Environment.GetEnvironmentVariable("ASSET_LIBRARY_CAPTURE_LIGHT_ONLY"),
+            "1",
+            StringComparison.Ordinal))
+        {
+            return;
+        }
+
         var darkModeEnabled = await webView.CoreWebView2.ExecuteScriptAsync(
             "(() => { const button = document.querySelector('#theme'); "
             + "if (!document.body.classList.contains('dark')) button.click(); "
