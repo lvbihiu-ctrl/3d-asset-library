@@ -40,6 +40,11 @@ jobs:
           --logger "trx;LogFileName=v2-host-tests.trx"
           --results-directory "$env:RUNNER_TEMP\TestResults"
 
+      - name: Restore win-x64 runtime packs
+        run: >-
+          dotnet restore AssetLibrary.Desktop\AssetLibrary.Desktop.csproj
+          --runtime win-x64
+
       - name: Publish self-contained win-x64 client
         run: >-
           dotnet publish AssetLibrary.Desktop\AssetLibrary.Desktop.csproj
