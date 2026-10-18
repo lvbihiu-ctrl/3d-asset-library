@@ -82,11 +82,13 @@ internal static class WebViewInteractionSmoke
         var before = JsonSerializer.Deserialize<double>(await webView.CoreWebView2.ExecuteScriptAsync(readWidth));
         var sidebarBefore = await webView.CoreWebView2.ExecuteScriptAsync("document.querySelector('.nav').getBoundingClientRect().width");
         await webView.CoreWebView2.ExecuteScriptAsync("document.querySelector('.main').dispatchEvent(new WheelEvent('wheel',{ctrlKey:true,deltaY:-120,bubbles:true,cancelable:true})); true");
-        await Task.Delay(100);
+        // Background/occluded WebView2 windows can throttle requestAnimationFrame.
+        // Wait for the real layout change rather than assuming a 100 ms paint deadline.
+        await WaitForCardWidthAsync(webView, before + 24);
         var enlarged = JsonSerializer.Deserialize<double>(await webView.CoreWebView2.ExecuteScriptAsync(readWidth));
         var sidebarAfter = await webView.CoreWebView2.ExecuteScriptAsync("document.querySelector('.nav').getBoundingClientRect().width");
         if (enlarged <= before || sidebarBefore != sidebarAfter || webView.ZoomFactor != 1 || webView.CoreWebView2.Settings.IsZoomControlEnabled)
-            throw new InvalidDataException("Card zoom changed the wrong UI region or browser-wide zoom remains enabled.");
+            throw new InvalidDataException($"Card zoom verification failed: before={before}, enlarged={enlarged}, sidebar={sidebarBefore}/{sidebarAfter}, zoom={webView.ZoomFactor}, pageZoomEnabled={webView.CoreWebView2.Settings.IsZoomControlEnabled}.");
 
         var reloaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         void OnReload(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs args) => reloaded.TrySetResult();
@@ -102,16 +104,28 @@ internal static class WebViewInteractionSmoke
                 if (ready == "true") break;
                 await Task.Delay(100);
             }
-            await Task.Delay(100);
+            await WaitForCardWidthAsync(webView, enlarged);
             var restored = JsonSerializer.Deserialize<double>(await webView.CoreWebView2.ExecuteScriptAsync(readWidth));
             if (restored != enlarged) throw new InvalidDataException("Card size did not survive page reload.");
             await webView.CoreWebView2.ExecuteScriptAsync("document.querySelector('.main').dispatchEvent(new WheelEvent('wheel',{ctrlKey:true,deltaY:120,bubbles:true,cancelable:true})); true");
-            await Task.Delay(100);
+            await WaitForCardWidthAsync(webView, before);
             var reduced = JsonSerializer.Deserialize<double>(await webView.CoreWebView2.ExecuteScriptAsync(readWidth));
             if (reduced != before) throw new InvalidDataException("Ctrl+wheel down did not restore the smaller card size.");
             Console.WriteLine("CARD ZOOM PASS: Ctrl+wheel handler enlarged/reduced cards, sidebar/page scale unchanged, saved size survived WebView2 reload.");
         }
         finally { webView.CoreWebView2.NavigationCompleted -= OnReload; }
+    }
+
+    private static async Task WaitForCardWidthAsync(WebView2 webView, double expected)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (DateTime.UtcNow < deadline)
+        {
+            var raw = await webView.CoreWebView2.ExecuteScriptAsync("document.querySelector('article.asset')?.getBoundingClientRect().width ?? 0");
+            if (Math.Abs(JsonSerializer.Deserialize<double>(raw) - expected) < .5) return;
+            await Task.Delay(100);
+        }
+        throw new TimeoutException($"Card layout did not reach the expected width {expected}.");
     }
 
     public static async Task VerifyRealLibraryAsync(

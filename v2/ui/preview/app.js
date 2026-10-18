@@ -63,6 +63,7 @@ document.querySelector('.main').title = 'Ctrl + 滚轮：缩放素材卡片';
 let toastTimeout;
 let realMode = false;
 let librarySummary = null;
+let sourceRoots = [];
 let hostInfo = null;
 let scanning = false;
 let clipboardBusy = false;
@@ -151,9 +152,15 @@ function matchesFilters(asset) {
     || (state.filter === 'recent' && position >= Math.max(0, items.length - 5))
     || (state.filter === 'unclassified' && asset.category === '未分类')
     || (state.filter.startsWith('cat:') && asset.category === state.filter.slice(4))
-    || (state.filter.startsWith('root:') && asset.folder.startsWith(state.filter.slice(5)));
+    || (state.filter.startsWith('source:') && (asset.sourceRootIds || [asset.sourceRootId]).includes(state.filter.slice(7)))
+    || (state.filter.startsWith('dir:') && (() => {
+      const [,rootId,encodedFolder] = state.filter.split(':');
+      const folder = decodeURIComponent(encodedFolder);
+      return asset.sourceRootId === rootId && (asset.folder === folder || asset.folder.startsWith(folder + '\\') || asset.folder.startsWith(folder + '/'));
+    })())
+    || (state.filter.startsWith('root:') && (asset.folder === state.filter.slice(5) || asset.folder.startsWith(state.filter.slice(5) + '/') || asset.folder.startsWith(state.filter.slice(5) + '\\')));
   const chipMatches = state.chip === '全部' || asset.category === state.chip || asset.tag === state.chip;
-  const searchMatches = !query || [asset.name, asset.category, asset.folder, asset.tag, asset.source, asset.extension]
+  const searchMatches = !query || [asset.name, asset.category, asset.folder, asset.tag, asset.source, asset.extension, asset.sourceRootName || '']
     .some(value => String(value).toLocaleLowerCase().includes(query));
   return filterMatches && chipMatches && searchMatches && (!imageResults || imageResults.has(asset.id));
 }
@@ -181,7 +188,21 @@ function renderNavigation() {
     + roots.map(root => navButton(
       'root:' + root, 'folder', root, items.filter(asset => asset.folder.startsWith(root)).length
     )).join('');
+  if (realMode) {
+    $('category-nav').innerHTML = cats.map(category => navButton('cat:' + category, 'layers', category, items.filter(asset => asset.category === category).length)).join('')
+      + '<div class="navtitle" style="padding-top:17px">素材文件夹（只读）</div>'
+      + sourceRoots.map(root => {
+        const assets = items.filter(asset => (asset.sourceRootIds || [asset.sourceRootId]).includes(root.id));
+        const folders = [...new Set(assets.map(asset => asset.folder.split(/[\\/]/)[0]).filter(folder => folder && folder !== '.'))];
+        return navButton('source:' + root.id, 'folder', root.name + (root.available === false ? ' · 离线' : ''), assets.length)
+          + folders.filter(folder => assets.some(asset => asset.sourceRootId === root.id && asset.folder.split(/[\\/]/)[0] === folder))
+            .map(folder => navButton('dir:' + root.id + ':' + encodeURIComponent(folder), 'folder', '　' + folder,
+              assets.filter(asset => asset.sourceRootId === root.id && (asset.folder === folder || asset.folder.startsWith(folder + '\\') || asset.folder.startsWith(folder + '/'))).length)).join('');
+      }).join('');
+  }
   document.querySelectorAll('.nav [data-filter]').forEach(element => {
+    const root = sourceRoots.find(root => element.dataset.filter === 'source:' + root.id);
+    if (root) element.title = root.path;
     element.onclick = () => {
       state.filter = element.dataset.filter;
       state.chip = '全部';
@@ -220,16 +241,19 @@ function renderCards() {
     : state.filter === 'favorite' ? '我的收藏'
       : state.filter === 'recent' ? '最近扫描'
         : state.filter === 'unclassified' ? '未分类'
-          : state.filter.slice(state.filter.indexOf(':') + 1);
+          : state.filter.startsWith('source:') ? sourceRoots.find(root => root.id === state.filter.slice(7))?.name || '素材文件夹'
+            : state.filter.startsWith('dir:') ? decodeURIComponent(state.filter.split(':')[2])
+              : state.filter.slice(state.filter.indexOf(':') + 1);
   $('pageName').textContent = imageResults ? '以图搜图 · 基础相似度' : filterTitle;
   $('pageCount').textContent = realMode
     ? `${visible.length} / ${items.length} 个真实模型 · ${librarySummary?.rootName || '本地素材库'}`
     : `${visible.length} 条合成测试记录 · 未读取本机模型`;
   if (realMode) {
     const errors = Number(librarySummary?.errorCount || 0);
+    const offlineRoots = sourceRoots.filter(root => root.available === false).length;
     $('hintline').innerHTML = imageResults
       ? `${icon('info')}<span><b>dHash 基础相似度排序：</b>差异越小越靠前，不代表语义识别。点击“全部素材”退出搜图。</span>`
-      : `${icon('info')}<span><b>真实素材只读索引：</b>${xss(librarySummary?.root || '')} · ${items.length} 个模型 · ${librarySummary?.rootAvailable === false ? '磁盘未连接：保留索引和缓存封面，请重新连接后定位' : errors ? `${errors} 个目录无法读取` : '索引已载入'}。选中素材后 Ctrl+V 设置封面；以图搜图请用专门按钮。C4D 拖入尚未完成。</span>`;
+      : `${icon('info')}<span><b>真实素材只读索引：</b>${sourceRoots.length} 个素材文件夹 · ${items.length} 个模型${offlineRoots ? ` · ${offlineRoots} 个文件夹离线，已有记录保留` : ''}${errors ? ` · ${errors} 个目录无法读取` : ''}。Ctrl+V 设置封面；以图搜图请用专门按钮。</span>`;
   } else {
     $('hintline').innerHTML = `${icon('info')}<span>当前仅用于验证界面与交互；<b>未连接真实素材库，C4D 拖入尚未完成。</b></span>`;
   }
@@ -244,7 +268,7 @@ function renderCards() {
   }).join('') : emptyMessage;
 
   if (realMode && canDragAsset() && !imageResults && librarySummary?.rootAvailable !== false) {
-    $('hintline').innerHTML = `${icon('info')}<span>真实素材只读索引 · 拖动卡片可拖出原模型；选中后 Ctrl+V 设置封面。</span>`;
+    $('hintline').innerHTML = `${icon('info')}<span>真实素材只读索引 · ${sourceRoots.length} 个文件夹 · 拖动卡片可拖出原模型；Ctrl+V 设置封面。</span>`;
   }
   const cardElements = [...$('assets').querySelectorAll('article.asset')];
   cardElements.forEach((element, index) => {
@@ -381,6 +405,7 @@ const capabilityControls = {
   findImage: 'searchSimilarClipboard',
   locateFile: 'locateAsset',
   importFolder: 'importFolder',
+  rescanLibrary: 'rescanLibrary',
   checkUpdate: 'checkForUpdates',
 };
 
@@ -399,9 +424,10 @@ function updateCapabilityControls() {
     if (id === 'checkUpdate') enabled = enabled && capabilities.has('installUpdate');
     if (id === 'locateFile') enabled = enabled && realMode && Boolean(state.selected);
     if (id === 'importFolder') enabled = enabled && !scanning;
+    if (id === 'rescanLibrary') enabled = enabled && realMode && !scanning;
     if (id === 'pasteCover') enabled = enabled && realMode && Boolean(state.selected);
     if (id === 'findImage') enabled = enabled && realMode && items.length > 0;
-    if (['pasteCover', 'findImage', 'importFolder'].includes(id)) enabled = enabled && !clipboardBusy && !scanning;
+    if (['pasteCover', 'findImage', 'importFolder', 'rescanLibrary'].includes(id)) enabled = enabled && !clipboardBusy && !scanning;
     control.disabled = !enabled;
     control.title = enabled ? '' : id === 'checkUpdate' ? '更新服务尚未接入' : id === 'locateFile' ? '请先选择真实素材' : '该本地能力尚未接入';
   }
@@ -482,9 +508,12 @@ function applyRealCatalog(catalog) {
   imageResults = null;
   realMode = true;
   librarySummary = catalog;
+  sourceRoots = catalog.sourceRoots || catalog.roots || [{id:'legacy',name:catalog.rootName,path:catalog.root,available:catalog.rootAvailable !== false}];
   cats = [...new Set(catalog.assets.map(asset => asset.extension))].sort();
   items = catalog.assets.map(asset => ({
     ...asset,
+    sourceRootId: asset.sourceRootId || sourceRoots[0]?.id,
+    sourceRootName: asset.sourceRootName || sourceRoots[0]?.name,
     id: String(asset.id),
     category: asset.extension,
     tag: asset.hasCover ? '有封面' : '缺封面',
@@ -506,13 +535,13 @@ function applyRealCatalog(catalog) {
   render();
 }
 
-async function importFolder() {
+async function importFolder(action = 'importFolder') {
   if (scanning) return;
   scanning = true;
   updateCapabilityControls();
   setNativeStatus('connecting', '请选择素材文件夹；确认后开始只读扫描…');
   $('hintline').innerHTML = `${icon('info')}<span><b>等待选择并扫描素材文件夹…</b> 原文件不会被修改。</span>`;
-  const result = await nativeOperation('importFolder');
+  const result = await nativeOperation(action);
   scanning = false;
   updateCapabilityControls();
   if (!result) {
@@ -525,8 +554,9 @@ async function importFolder() {
     return;
   }
   applyRealCatalog(result.catalog);
-  setNativeStatus('connected', `真实素材库已连接 · ${items.length} 个模型`);
-  toast(`只读扫描完成：${items.length} 个模型`);
+  const offline = sourceRoots.filter(root => root.available === false).length;
+  setNativeStatus('connected', `${sourceRoots.length} 个素材文件夹 · ${items.length} 个模型${offline ? ` · ${offline} 个文件夹离线` : ''}`);
+  toast(`扫描完成：共 ${items.length} 个模型${result.addedCount == null ? '' : `，新增 ${result.addedCount} 个，补齐 ${result.newCoverCount} 张封面`}${offline ? '；离线记录和封面已保留' : ''}`);
 }
 
 async function locateSelected() {
@@ -606,7 +636,15 @@ document.addEventListener('keydown', event => {
 });
 $('showAll').onclick = resetFilters;
 $('locateFile').onclick = locateSelected;
-$('importFolder').onclick = importFolder;
+const rescanButton = document.createElement('button');
+rescanButton.id = 'rescanLibrary';
+rescanButton.type = 'button';
+rescanButton.className = 'toolbtn';
+rescanButton.disabled = true;
+rescanButton.innerHTML = icon('refresh') + '<span>重新扫描</span>';
+$('locateFile').after(rescanButton);
+rescanButton.onclick = () => importFolder('rescanLibrary');
+$('importFolder').onclick = () => importFolder();
 $('gridBtn').onclick = () => { state.layout = 'grid'; render(); };
 $('listBtn').onclick = () => { state.layout = 'list'; render(); };
 $('boardBtn').onclick = () => { state.layout = 'board'; render(); };

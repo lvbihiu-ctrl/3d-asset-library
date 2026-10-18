@@ -8,9 +8,10 @@ internal sealed record HostOptions(
     string? UserDataDirectory,
     string? DataDirectory = null,
     bool CoverFeatureTest = false,
-    string? LegacyDataDirectory = null)
+    string? LegacyDataDirectory = null,
+    bool MultiFolderTest = false)
 {
-    public bool IsAutomated => SmokeTest || UiInteractionTest || LibraryTestRoot is not null || CaptureDirectory is not null || CoverFeatureTest;
+    public bool IsAutomated => SmokeTest || UiInteractionTest || LibraryTestRoot is not null || CaptureDirectory is not null || CoverFeatureTest || MultiFolderTest;
 
     public static HostOptions Parse(IReadOnlyList<string> arguments)
     {
@@ -21,12 +22,16 @@ internal sealed record HostOptions(
         string? userDataDirectory = null;
         string? dataDirectory = null;
         var coverFeatureTest = false;
+        var multiFolderTest = false;
         string? legacyDataDirectory = null;
 
         for (var index = 0; index < arguments.Count; index++)
         {
             switch (arguments[index])
             {
+                case "--multi-folder-test":
+                    multiFolderTest = true;
+                    break;
                 case "--data-dir":
                     dataDirectory = ReadValue(arguments, ref index, "--data-dir");
                     break;
@@ -64,7 +69,7 @@ internal sealed record HostOptions(
             userDataDirectory is null ? null : Path.GetFullPath(userDataDirectory),
             dataDirectory is null ? null : Path.GetFullPath(dataDirectory),
             coverFeatureTest,
-            legacyDataDirectory is null ? null : Path.GetFullPath(legacyDataDirectory));
+            legacyDataDirectory is null ? null : Path.GetFullPath(legacyDataDirectory), multiFolderTest);
     }
 
     private static string ReadValue(IReadOnlyList<string> arguments, ref int index, string option)

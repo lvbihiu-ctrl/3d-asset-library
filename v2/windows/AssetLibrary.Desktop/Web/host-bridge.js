@@ -11,7 +11,7 @@
     return new Promise((resolve, reject) => {
       // Folder scans can legitimately exceed five minutes on large or slow disks.
       // Keep the request pending so the page cannot diverge from the native session.
-      const timeoutMs = ['importFolder', 'searchSimilarClipboard', 'setCoverFromClipboard', 'beginAssetDrag'].includes(action) ? null : 5000;
+      const timeoutMs = ['importFolder', 'rescanLibrary', 'searchSimilarClipboard', 'setCoverFromClipboard', 'beginAssetDrag'].includes(action) ? null : 5000;
       const timer = timeoutMs === null ? null : window.setTimeout(() => {
         pending.delete(id);
         reject(new Error('Windows 宿主响应超时。'));

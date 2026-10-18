@@ -28,18 +28,21 @@ public sealed class LocalLibraryStore
         if (!File.Exists(file)) return null;
         var saved = JsonSerializer.Deserialize<SavedCatalog>(File.ReadAllText(file))
             ?? throw new InvalidDataException("V2 素材索引无法读取；请保留该文件以便恢复。");
+        var roots = saved.Roots is { Length: > 0 } ? saved.Roots : [new LibraryRoot(saved.Root, saved.RootName)];
         var assets = saved.Assets.Select(entry =>
         {
             var full = Path.GetFullPath(entry.FullPath);
-            if (!IsUnder(saved.Root, full) || LibraryScanner.CreateAssetId(full) != entry.Asset.Id)
+            var sourceRoot = roots.FirstOrDefault(root => root.Id == entry.Asset.SourceRootId && IsUnder(root.Path, full))
+                ?? roots.FirstOrDefault(root => IsUnder(root.Path, full));
+            if (sourceRoot is null || LibraryScanner.CreateAssetId(full) != entry.Asset.Id)
                 throw new InvalidDataException("V2 索引包含不匹配的素材路径。");
             var cover = entry.CoverPath;
             if (cover is not null && !IsUnder(_covers, cover)
                 && !string.Equals(Path.GetDirectoryName(full), Path.GetDirectoryName(Path.GetFullPath(cover)), StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("V2 索引包含不匹配的封面路径。");
-            return entry.Asset with { FullPath = full, CoverPath = cover, HasCover = cover is not null && File.Exists(cover) };
+            return entry.Asset with { FullPath = full, CoverPath = cover, HasCover = cover is not null && File.Exists(cover), SourceRootId = sourceRoot.Id, SourceRootName = sourceRoot.Name };
         }).ToArray();
-        return WithCustomCovers(new LibraryCatalog(saved.Root, saved.RootName, saved.ScannedAtUtc, 0, saved.ErrorCount, assets));
+        return WithCustomCovers(new LibraryCatalog(saved.Root, saved.RootName, saved.ScannedAtUtc, 0, saved.ErrorCount, assets, roots));
     }
 
     public LibraryCatalog SaveCatalog(LibraryCatalog catalog)
@@ -47,8 +50,37 @@ public sealed class LocalLibraryStore
         var updated = WithCustomCovers(catalog);
         AtomicJson(Path.Combine(_root, "library.json"), new SavedCatalog(
             updated.Root, updated.RootName, updated.ScannedAtUtc, updated.ErrorCount,
-            updated.Assets.Select(asset => new SavedAsset(asset, asset.FullPath, asset.CoverPath)).ToArray()));
+            updated.Assets.Select(asset => new SavedAsset(asset, asset.FullPath, asset.CoverPath)).ToArray(), updated.SourceRoots.ToArray()));
         return updated;
+    }
+
+    public LibraryCatalog MergeScans(LibraryCatalog? previous, IReadOnlyList<LibraryCatalog> scans)
+    {
+        if (scans.Count == 0) return previous ?? throw new ArgumentException("没有可导入的素材文件夹。");
+        var roots = (previous?.SourceRoots ?? []).Concat(scans.SelectMany(scan => scan.SourceRoots))
+            .GroupBy(root => root.Id, StringComparer.Ordinal).Select(group => group.First()).ToArray();
+        var assets = (previous?.Assets ?? []).ToDictionary(asset => asset.Id, StringComparer.Ordinal);
+        foreach (var scan in scans)
+        foreach (var incoming in scan.Assets)
+        {
+            var next = incoming;
+            if (assets.TryGetValue(incoming.Id, out var existing))
+            {
+                // Keep prior ownership when parent and child folders overlap; one path, one record.
+                var owner = roots.FirstOrDefault(root => root.Id == existing.SourceRootId)
+                    ?? roots.First(root => IsUnder(root.Path, existing.FullPath));
+                var relative = Path.GetRelativePath(owner.Path, incoming.FullPath);
+                next = incoming with { Name = existing.Name, SourceRootId = owner.Id, SourceRootName = owner.Name,
+                    RelativePath = relative, Folder = Path.GetDirectoryName(relative) is { Length: > 0 } folder ? folder : "." };
+                if (existing.CoverPath is not null && File.Exists(existing.CoverPath))
+                    next = next with { CoverPath = existing.CoverPath, HasCover = true };
+            }
+            assets[incoming.Id] = next;
+        }
+        return SaveCatalog(new LibraryCatalog(roots[0].Path, roots.Length == 1 ? roots[0].Name : $"{roots.Length} 个素材文件夹",
+            DateTimeOffset.UtcNow, scans.Sum(scan => scan.DurationMilliseconds), scans.Sum(scan => scan.ErrorCount),
+            assets.Values.OrderBy(asset => asset.SourceRootName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(asset => asset.RelativePath, StringComparer.OrdinalIgnoreCase).ToArray(), roots));
     }
 
     public LibraryAsset SaveCover(LibraryAsset asset, Image image)
@@ -133,6 +165,7 @@ public sealed class LocalLibraryStore
     {
         Assets = catalog.Assets.Select(asset =>
         {
+            asset = asset with { SourceRootIds = catalog.SourceRoots.Where(root => IsUnder(root.Path, asset.FullPath)).Select(root => root.Id).ToArray() };
             if (!_customCovers.TryGetValue(asset.Id, out var name) || Path.GetFileName(name) != name) return asset;
             var path = Path.Combine(_covers, name);
             return File.Exists(path) ? asset with { HasCover = true, CoverPath = path } : asset;
@@ -150,5 +183,5 @@ public sealed class LocalLibraryStore
     }
 
     private sealed record SavedAsset(LibraryAsset Asset, string FullPath, string? CoverPath);
-    private sealed record SavedCatalog(string Root, string RootName, DateTimeOffset ScannedAtUtc, int ErrorCount, SavedAsset[] Assets);
+    private sealed record SavedCatalog(string Root, string RootName, DateTimeOffset ScannedAtUtc, int ErrorCount, SavedAsset[] Assets, LibraryRoot[]? Roots = null);
 }

@@ -18,12 +18,13 @@ class ClipboardUIContract(unittest.TestCase):
           window.testCalls = []; window.testClipboardError = false;
           const assets = ['a','b'].map((letter, index) => ({
             id:letter.repeat(64), name:'Model '+letter, fileName:letter+'.c4d', extension:'C4D',
-            relativePath:letter+'.c4d', folder:'.', sizeBytes:100, hasCover:true
+            relativePath:letter+'.c4d', folder:'.', sizeBytes:100, hasCover:true,
+            sourceRootId:letter.repeat(64),sourceRootName:'Folder '+letter
           }));
           window.assetLibraryHost = {request:async (action,payload) => {
             window.testCalls.push({action,payload});
-            if(action==='getHostInfo') return {capabilities:['getHostInfo','getLibrary','setCoverFromClipboard','searchSimilarClipboard','importFolder','locateAsset','beginAssetDrag']};
-            if(action==='getLibrary') return {catalog:{assets,root:'D:/fixture',rootName:'fixture'}};
+            if(action==='getHostInfo') return {capabilities:['getHostInfo','getLibrary','setCoverFromClipboard','searchSimilarClipboard','importFolder','rescanLibrary','locateAsset','beginAssetDrag']};
+            if(action==='getLibrary' || action==='rescanLibrary' || action==='importFolder') return {catalog:{assets,root:'D:/fixture',rootName:'fixture',sourceRoots:['a','b'].map(letter=>({id:letter.repeat(64),name:'Folder '+letter,path:'D:/'+letter,available:true}))},addedCount:0,newCoverCount:0};
             if(action==='beginAssetDrag') return {dropped:false};
             if(window.testClipboardError) throw Error('剪贴板中没有图片');
             if(action==='setCoverFromClipboard') return {asset:assets.find(a=>a.id===payload.assetId),revision:'f'.repeat(32)};
@@ -61,6 +62,16 @@ class ClipboardUIContract(unittest.TestCase):
         self.assertIn('基础相似度',self.page.locator('#pageName').inner_text())
         self.page.locator('#showAll').click()
         self.assertEqual('a'*64,self.page.locator('article.asset').first.get_attribute('data-id'))
+
+    def test_root_navigation_and_rescan_preserve_both_directories(self):
+        self.assertEqual(2,self.page.locator('[data-filter^="source:"]').count())
+        self.page.locator('[data-filter="source:'+'b'*64+'"]').click()
+        self.assertEqual(1,self.page.locator('article.asset').count())
+        self.assertEqual('b'*64,self.page.locator('article.asset').get_attribute('data-id'))
+        self.assertEqual('Folder b',self.page.locator('#pageName').inner_text())
+        self.page.locator('#rescanLibrary').click()
+        self.page.wait_for_function("testCalls.some(x=>x.action==='rescanLibrary') && document.querySelectorAll('article.asset').length===2")
+        self.assertIn({'action':'rescanLibrary','payload':{}},self.page.evaluate('testCalls'))
 
     def test_two_cards_stay_compact_and_side_by_side(self):
         self.page.set_viewport_size({"width": 1920, "height": 1080})

@@ -13,4 +13,7 @@ public sealed record LibraryAsset(
     DateTimeOffset ModifiedUtc,
     bool HasCover,
     [property: JsonIgnore] string FullPath,
-    [property: JsonIgnore] string? CoverPath);
+    [property: JsonIgnore] string? CoverPath,
+    string SourceRootId = "",
+    string SourceRootName = "",
+    IReadOnlyList<string>? SourceRootIds = null);

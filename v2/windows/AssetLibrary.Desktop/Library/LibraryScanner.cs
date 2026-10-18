@@ -42,7 +42,11 @@ public sealed class LibraryScanner
 
             try
             {
-                foreach (var file in directory.EnumerateFiles())
+                var files = directory.GetFiles();
+                var folderModels = files.Count(file => ModelExtensions.Contains(file.Extension));
+                var images = files.Where(file => CoverExtensions.Contains(file.Extension, StringComparer.OrdinalIgnoreCase))
+                    .ToDictionary(file => file.Name, file => file.FullName, StringComparer.OrdinalIgnoreCase);
+                foreach (var file in files)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     if (!ModelExtensions.Contains(file.Extension))
@@ -53,7 +57,7 @@ public sealed class LibraryScanner
                     var fullPath = Path.GetFullPath(file.FullName);
                     var relativePath = Path.GetRelativePath(root, fullPath);
                     var relativeFolder = Path.GetDirectoryName(relativePath);
-                    var coverPath = FindCover(file);
+                    var coverPath = FindCover(file, images, folderModels == 1);
                     assets.Add(new LibraryAsset(
                         CreateAssetId(fullPath),
                         Path.GetFileNameWithoutExtension(file.Name),
@@ -65,7 +69,9 @@ public sealed class LibraryScanner
                         file.LastWriteTimeUtc,
                         coverPath is not null,
                         fullPath,
-                        coverPath));
+                        coverPath,
+                        CreateAssetId(root),
+                        new DirectoryInfo(root).Name));
                 }
             }
             catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
@@ -109,7 +115,7 @@ public sealed class LibraryScanner
             assets);
     }
 
-    private static string? FindCover(FileInfo model)
+    private static string? FindCover(FileInfo model, IReadOnlyDictionary<string, string> images, bool onlyModel)
     {
         var directory = model.DirectoryName;
         if (directory is null)
@@ -118,10 +124,14 @@ public sealed class LibraryScanner
         }
 
         var baseName = Path.GetFileNameWithoutExtension(model.Name);
+        var names = new List<string> { baseName };
+        names.AddRange(new[] { "_preview", "-preview", ".preview", "_cover", "-cover", "_thumb", "-thumb", "_thumbnail", "_render", "_预览", "_封面" }.Select(suffix => baseName + suffix));
+        // Generic/folder-named previews are only unambiguous in a one-model folder.
+        if (onlyModel) names.AddRange([model.Directory!.Name, "preview", "cover", "thumbnail", "预览", "封面"]);
+        foreach (var name in names.Distinct(StringComparer.OrdinalIgnoreCase))
         foreach (var extension in CoverExtensions)
         {
-            var candidate = Path.Combine(directory, baseName + extension);
-            if (File.Exists(candidate))
+            if (images.TryGetValue(name + extension, out var candidate))
             {
                 return Path.GetFullPath(candidate);
             }

@@ -24,6 +24,7 @@ internal sealed class MainWindow : Form
     private readonly SemaphoreSlim _libraryWork = new(1, 1);
     private string? _lastAutomatedLocatedAssetId;
     private bool _dragging;
+    private Queue<string[]>? _automatedFolderSelections;
 
     public MainWindow(HostOptions options)
     {
@@ -43,7 +44,8 @@ internal sealed class MainWindow : Form
             () => _librarySession.Catalog,
             SetCoverFromClipboardAsync,
             SearchSimilarClipboardAsync,
-            BeginAssetDragAsync);
+            BeginAssetDragAsync,
+            RescanLibraryAsync);
         Text = "3D 素材管理器 V2";
         ClientSize = new Size(1016, 689);
         MinimumSize = new Size(820, 600);
@@ -79,6 +81,15 @@ internal sealed class MainWindow : Form
         try
         {
             await InitializeWebViewAsync();
+            if (_options.MultiFolderTest)
+            {
+                _automatedFolderSelections = MultiFolderFeatureSmoke.Prepare(_options.LibraryTestRoot!);
+                await MultiFolderFeatureSmoke.VerifyAsync(_webView, _librarySession, _store, _options.LibraryTestRoot!);
+                if (_options.CaptureDirectory is not null)
+                    await ScreenshotCapture.CaptureRequiredAsync(_webView, this, _options.CaptureDirectory);
+                Close();
+                return;
+            }
             if (_options.CoverFeatureTest)
             {
                 await ClipboardFeatureSmoke.VerifyAsync(_webView, _librarySession, _store, _options.LibraryTestRoot!);
@@ -268,33 +279,53 @@ internal sealed class MainWindow : Form
     private async Task<ImportLibraryResult> ImportLibraryCoreAsync()
     {
         var progress = new Progress<LibraryScanProgress>(ReportScanProgress);
+        if (_automatedFolderSelections is not null)
+            return await ScanAndMergeAsync(_automatedFolderSelections.Dequeue(), progress);
         if (_options.LibraryTestRoot is not null)
         {
-            var automatedCatalog = await Task.Run(() => _libraryScanner.Scan(
-                _options.LibraryTestRoot,
-                progress: progress));
-            automatedCatalog = _store.SaveCatalog(automatedCatalog);
-            _librarySession.Replace(automatedCatalog);
-            return new ImportLibraryResult(false, automatedCatalog);
+            return await ScanAndMergeAsync([_options.LibraryTestRoot], progress);
         }
 
         using var dialog = new FolderBrowserDialog
         {
-            Description = "选择一个素材根目录（只读扫描 C4D / FBX / OBJ）",
+            Description = "添加素材文件夹（可按 Ctrl 多选；保留已收录素材）",
+            Multiselect = true,
             ShowNewFolderButton = false,
             UseDescriptionForTitle = true,
         };
 
-        if (dialog.ShowDialog(this) != DialogResult.OK || string.IsNullOrWhiteSpace(dialog.SelectedPath))
+        if (dialog.ShowDialog(this) != DialogResult.OK || dialog.SelectedPaths.Length == 0)
         {
             return new ImportLibraryResult(true, null);
         }
 
-        var selectedPath = Path.GetFullPath(dialog.SelectedPath);
-        var catalog = await Task.Run(() => _libraryScanner.Scan(selectedPath, progress: progress));
-        catalog = _store.SaveCatalog(catalog);
+        return await ScanAndMergeAsync(dialog.SelectedPaths, progress);
+    }
+
+    private async Task<ImportLibraryResult> ScanAndMergeAsync(IEnumerable<string> paths, IProgress<LibraryScanProgress> progress)
+    {
+        var scans = new List<LibraryCatalog>();
+        foreach (var path in paths.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase))
+            scans.Add(await Task.Run(() => _libraryScanner.Scan(path, progress: progress)));
+        var previous = _librarySession.Catalog;
+        var catalog = _store.MergeScans(previous, scans);
+        var coveredIds = (previous?.Assets ?? []).Where(asset => asset.HasCover).Select(asset => asset.Id).ToHashSet(StringComparer.Ordinal);
+        var newCovers = catalog.Assets.Count(asset => asset.HasCover && !coveredIds.Contains(asset.Id));
         _librarySession.Replace(catalog);
-        return new ImportLibraryResult(false, catalog);
+        return new ImportLibraryResult(false, catalog, catalog.Assets.Count - (previous?.Assets.Count ?? 0), newCovers);
+    }
+
+    private async Task<ImportLibraryResult> RescanLibraryAsync()
+    {
+        await _libraryWork.WaitAsync();
+        try
+        {
+            var previous = _librarySession.Catalog ?? throw new InvalidOperationException("请先添加素材文件夹。");
+            var available = previous.SourceRoots.Where(root => root.Available).Select(root => root.Path).ToArray();
+            if (available.Length == 0) throw new DirectoryNotFoundException("素材磁盘未连接，已保留所有索引和封面。");
+            return await ScanAndMergeAsync(available, new Progress<LibraryScanProgress>(ReportScanProgress));
+        }
+        finally { _libraryWork.Release(); }
     }
 
     private async Task<LibraryAsset> SetCoverFromClipboardAsync(string assetId)

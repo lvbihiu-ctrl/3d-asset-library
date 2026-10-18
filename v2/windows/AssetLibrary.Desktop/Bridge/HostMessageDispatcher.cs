@@ -20,6 +20,7 @@ public sealed class HostMessageDispatcher
     private readonly Func<string, Task<LibraryAsset>>? _setCoverFromClipboard;
     private readonly Func<Task<ImageSearchResult>>? _searchSimilarClipboard;
     private readonly Func<string, Task<bool>>? _beginAssetDrag;
+    private readonly Func<Task<ImportLibraryResult>>? _rescanLibrary;
 
     public HostMessageDispatcher(
         Func<HostInfo> hostInfo,
@@ -28,7 +29,8 @@ public sealed class HostMessageDispatcher
         Func<LibraryCatalog?>? getLibrary = null,
         Func<string, Task<LibraryAsset>>? setCoverFromClipboard = null,
         Func<Task<ImageSearchResult>>? searchSimilarClipboard = null,
-        Func<string, Task<bool>>? beginAssetDrag = null)
+        Func<string, Task<bool>>? beginAssetDrag = null,
+        Func<Task<ImportLibraryResult>>? rescanLibrary = null)
     {
         _hostInfo = hostInfo ?? throw new ArgumentNullException(nameof(hostInfo));
         _importLibrary = importLibrary;
@@ -37,6 +39,7 @@ public sealed class HostMessageDispatcher
         _setCoverFromClipboard = setCoverFromClipboard;
         _searchSimilarClipboard = searchSimilarClipboard;
         _beginAssetDrag = beginAssetDrag;
+        _rescanLibrary = rescanLibrary;
     }
 
     public string Dispatch(string? rawMessage) =>
@@ -80,7 +83,8 @@ public sealed class HostMessageDispatcher
             return action switch
             {
                 "getHostInfo" => DispatchHostInfo(id!, payload),
-                "importFolder" => await DispatchImportAsync(id!, payload),
+                "importFolder" => await DispatchImportAsync(id!, payload, _importLibrary),
+                "rescanLibrary" => await DispatchImportAsync(id!, payload, _rescanLibrary),
                 "locateAsset" => DispatchLocate(id!, payload),
                 "beginAssetDrag" => await DispatchDragAsync(id!, payload),
                 "getLibrary" => DispatchGetLibrary(id!, payload),
@@ -119,6 +123,7 @@ public sealed class HostMessageDispatcher
             if (_setCoverFromClipboard is not null) capabilities.Add("setCoverFromClipboard");
             if (_searchSimilarClipboard is not null) capabilities.Add("searchSimilarClipboard");
             if (_beginAssetDrag is not null) capabilities.Add("beginAssetDrag");
+            if (_rescanLibrary is not null) capabilities.Add("rescanLibrary");
 
             return Success(id, new
             {
@@ -135,9 +140,9 @@ public sealed class HostMessageDispatcher
         }
     }
 
-    private async Task<string> DispatchImportAsync(string id, JsonElement payload)
+    private async Task<string> DispatchImportAsync(string id, JsonElement payload, Func<Task<ImportLibraryResult>>? operation)
     {
-        if (_importLibrary is null)
+        if (operation is null)
         {
             return Error(id, "action_not_allowed", "真实素材扫描尚未启用。");
         }
@@ -149,7 +154,7 @@ public sealed class HostMessageDispatcher
 
         try
         {
-            return Success(id, await _importLibrary());
+            return Success(id, await operation());
         }
         catch (Exception exception)
         {
