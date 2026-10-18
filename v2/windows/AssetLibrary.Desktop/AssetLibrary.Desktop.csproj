@@ -20,7 +20,16 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="..\..\..\app\素材工作台.html" Link="Web\index.html">
+    <!-- The approved V2 visual design is the desktop page, never the legacy V14 prototype. -->
+    <Content Include="..\ui\desktop\index.html" Link="Web\index.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="..\ui\preview\app.js" Link="Web\app.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="..\ui\update\bridge.js" Link="Web\bridge.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
