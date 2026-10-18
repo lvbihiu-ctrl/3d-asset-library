@@ -1,0 +1,42 @@
+name: Validate installed UI skills
+on:
+  pull_request:
+    paths:
+      - '.agents/skills/ui-ux-pro-max/**'
+      - '.agents/skills/webapp-testing/**'
+      - '.github/workflows/validate-installed-ui-skills.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify metadata and bundled files
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          r=Path('.agents/skills')
+          for name in ['ui-ux-pro-max','webapp-testing']:
+              p=r/name
+              assert (p/'SKILL.md').is_file()
+          assert (r/'ui-ux-pro-max'/'LICENSE').is_file()
+          assert (r/'webapp-testing'/'LICENSE.txt').is_file()
+          for file in ['core.py','design_system.py','reasoning_contract.py','search.py']:
+              assert (r/'ui-ux-pro-max'/'scripts'/file).is_file()
+          assert len(list((r/'ui-ux-pro-max'/'data/stacks').glob('*.csv')))==22
+          assert len(list((r/'webapp-testing'/'examples').glob('*.py')))==3
+          PY
+      - name: Exercise real UI UX search, native stack and design-system modes
+        run: |
+          python .agents/skills/ui-ux-pro-max/scripts/search.py "asset manager masonry sidebar" --domain ux --max-results 3
+          python .agents/skills/ui-ux-pro-max/scripts/search.py "native responsive layout" --stack wpf
+          python .agents/skills/ui-ux-pro-max/scripts/search.py "3D asset manager desktop productivity" --design-system -p "3D Asset Library"
+      - name: Verify Webapp testing helper syntax and command line
+        run: |
+          python -m py_compile .agents/skills/webapp-testing/scripts/with_server.py
+          python .agents/skills/webapp-testing/scripts/with_server.py --help
