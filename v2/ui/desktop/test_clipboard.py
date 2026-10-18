@@ -62,7 +62,7 @@ class ClipboardUIContract(unittest.TestCase):
         self.page.locator('#showAll').click()
         self.assertEqual('a'*64,self.page.locator('article.asset').first.get_attribute('data-id'))
 
-    def test_two_cards_share_available_width_instead_of_stacking_in_first_column(self):
+    def test_two_cards_stay_compact_and_side_by_side(self):
         self.page.set_viewport_size({"width": 1920, "height": 1080})
         self.page.wait_for_timeout(100)
         first = self.page.locator('article.asset').nth(0).bounding_box()
@@ -70,7 +70,34 @@ class ClipboardUIContract(unittest.TestCase):
         area = self.page.locator('#assets').bounding_box()
         self.assertGreater(second['x'], first['x'] + first['width'] - 1)
         self.assertLess(abs(first['y'] - second['y']), 2)
-        self.assertGreater((first['width'] + second['width']) / area['width'], .90)
+        self.assertLessEqual(first['width'], 300)
+        self.assertLessEqual(second['width'], 300)
+
+    def test_ctrl_wheel_resizes_cards_not_sidebar_or_page_and_clamps(self):
+        self.page.set_viewport_size({'width':1920,'height':1080})
+        self.page.wait_for_timeout(100)
+        width = lambda: self.page.locator('article.asset').first.bounding_box()['width']
+        sidebar = self.page.locator('.nav').bounding_box()['width']
+        before = width()
+        self.page.locator('.main').dispatch_event('wheel', {'ctrlKey':True,'deltaY':-120})
+        self.page.wait_for_timeout(50)
+        self.assertGreater(width(), before)
+        self.page.locator('.main').dispatch_event('wheel', {'ctrlKey':True,'deltaY':120})
+        self.page.wait_for_timeout(50)
+        self.assertEqual(width(), before)
+        self.page.locator('.main').dispatch_event('wheel', {'ctrlKey':False,'deltaY':120})
+        self.page.wait_for_timeout(50)
+        self.assertEqual(width(), before)
+        self.assertEqual(sidebar,self.page.locator('.nav').bounding_box()['width'])
+        for direction, expected in ((120,160),(-120,480)):
+            self.page.evaluate('(deltaY)=>{for(let i=0;i<40;i++)document.querySelector(".main").dispatchEvent(new WheelEvent("wheel",{ctrlKey:true,deltaY,bubbles:true,cancelable:true}));}', direction)
+            self.page.wait_for_timeout(50)
+            self.assertEqual(width(), expected)
+        self.page.locator('#gridBtn').click()
+        self.assertEqual(width(),480)
+        self.page.locator('#boardBtn').click()
+        self.page.wait_for_timeout(50)
+        self.assertEqual(width(),480)
 
     def test_cover_image_cannot_be_dragged_as_a_browser_url(self):
         self.assertFalse(self.page.locator('article.asset img').first.evaluate('img => img.draggable'))

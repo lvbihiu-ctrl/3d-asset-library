@@ -33,6 +33,16 @@
 
 ## Local delivery
 
+### Subsequent user acceptance and card-size follow-up
+
+The user subsequently confirmed in this chat that ordinary dragging opens the model, and selected **A** for Shift dragging merging into the existing scene while retaining the previous model. These are user-reported real-machine passes, not automated three-repeat import or texture-integrity certification.
+
+The user then requested smaller cards and Ctrl+wheel sizing. Implemented a 260 px default (160–480 px range), Ctrl+wheel within the material region, persistent size in the existing WebView2 profile, and disabled browser-wide zoom. Sparse results no longer stretch to fill the wall. Drag code and data formats unchanged.
+
+Follow-up validation: 23 UI tests and 47 .NET tests passed. Actual Windows WebView2 `--ui-interaction-test` passed injected Ctrl-wheel enlargement/reduction, unchanged sidebar/browser scale, and preference retention after page reload. This is a native WebView2 event-handler test, not a physical mouse-wheel automation claim. Existing index/config/cover hashes unchanged after installation. Captures verify visible images decoded before saving; private captures stay local.
+
+Card-size build installed and launched at `D:\Codex\3D-Asset-Library-V2-App\builds\20261019-030305-470\AssetLibrary.V2.exe`; desktop shortcut updated with previous shortcut/build retained. The later screenshot-wait change only affects automated capture, not this interactive build's UI behavior.
+
 - Installed EXE: `D:\Codex\3D-Asset-Library-V2-App\builds\20261019-025843-113\AssetLibrary.V2.exe`.
 - Shortcut backup: `D:\Codex\3D-Asset-Library-V2-App\backups\20261019-025843-113`.
 - ZIP under this worktree: `.artifacts/drag-masonry-delivery/3D-Asset-Library-V2-Drag-Masonry-win-x64.zip`.

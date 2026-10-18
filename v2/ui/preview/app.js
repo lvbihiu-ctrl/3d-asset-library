@@ -52,6 +52,14 @@ const state = {
   layout: 'board', filter: 'all', chip: '全部', query: '', selected: items[0]?.id ?? null,
   checked: new Set(), dark: false,
 };
+const cardSizeKey = 'assetlibrary.card-size.v1';
+let cardSize = 260;
+try {
+  const savedSize = Number(localStorage.getItem(cardSizeKey));
+  if (Number.isFinite(savedSize) && savedSize >= 160 && savedSize <= 480) cardSize = savedSize;
+} catch { /* Storage may be unavailable in standalone previews. */ }
+$('app').style.setProperty('--card-size', cardSize + 'px');
+document.querySelector('.main').title = 'Ctrl + 滚轮：缩放素材卡片';
 let toastTimeout;
 let realMode = false;
 let librarySummary = null;
@@ -73,8 +81,8 @@ function scheduleMasonry() {
     area.style.height = '';
     if (state.layout !== 'board' || !cards.length) return;
     const gap = 14;
-    const columns = Math.min(cards.length, Math.max(1, Math.floor((area.clientWidth + gap) / (210 + gap))));
-    const width = (area.clientWidth - gap * (columns - 1)) / columns;
+    const width = Math.min(cardSize, area.clientWidth);
+    const columns = Math.min(cards.length, Math.max(1, Math.floor((area.clientWidth + gap) / (width + gap))));
     const bottoms = Array(columns).fill(0);
     cards.forEach(card => { card.style.width = width + 'px'; });
     const heights = cards.map(card => card.offsetHeight);
@@ -87,6 +95,16 @@ function scheduleMasonry() {
     area.style.height = Math.max(0, Math.max(...bottoms) - gap) + 'px';
   });
 }
+
+document.querySelector('.main').addEventListener('wheel', event => {
+  if (!event.ctrlKey || !event.deltaY) return;
+  event.preventDefault();
+  if (dragPending) return;
+  cardSize = Math.max(160, Math.min(480, cardSize + (event.deltaY < 0 ? 24 : -24)));
+  $('app').style.setProperty('--card-size', cardSize + 'px');
+  try { localStorage.setItem(cardSizeKey, String(cardSize)); } catch { /* Nonfatal preference write. */ }
+  scheduleMasonry();
+}, { passive: false });
 
 function canDragAsset() {
   return realMode && !scanning && !clipboardBusy && hostInfo?.capabilities?.includes('beginAssetDrag');

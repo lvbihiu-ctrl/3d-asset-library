@@ -65,6 +65,17 @@ internal static class ScreenshotCapture
         }
 
         await Task.Delay(400);
+        // Cold profiles can finish navigation before covers decode. Do not save blank evidence.
+        var coverDeadline = DateTime.UtcNow.AddSeconds(10);
+        while (true)
+        {
+            var visibleImagesReady = await webView.CoreWebView2.ExecuteScriptAsync(
+                "[...document.images].filter(img => { const r = img.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < innerHeight; }).every(img => img.complete && img.naturalWidth > 0)");
+            if (visibleImagesReady == "true") break;
+            if (DateTime.UtcNow >= coverDeadline) throw new InvalidDataException("Visible covers did not decode before screenshot capture.");
+            await Task.Delay(100);
+        }
+        await Task.Delay(100);
         await using (var stream = File.Create(outputPath))
         {
             await webView.CoreWebView2.CapturePreviewAsync(

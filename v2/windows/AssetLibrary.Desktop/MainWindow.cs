@@ -109,6 +109,7 @@ internal sealed class MainWindow : Form
             if (_options.UiInteractionTest)
             {
                 await WebViewInteractionSmoke.VerifyAsync(_webView);
+                await WebViewInteractionSmoke.VerifyCardZoomAsync(_webView);
                 Console.WriteLine("UI INTERACTION PASS: 搜索、分类、主题、布局、卡片选择和滚动均已在 WebView2 中验证。");
                 Close();
                 return;
@@ -168,6 +169,8 @@ internal sealed class MainWindow : Form
         core.Settings.AreDevToolsEnabled = false;
         core.Settings.AreDefaultContextMenusEnabled = false;
         core.Settings.IsStatusBarEnabled = false;
+        // Ctrl+wheel belongs to the material wall, not browser-wide page zoom.
+        core.Settings.IsZoomControlEnabled = false;
         core.Settings.AreDefaultScriptDialogsEnabled = false;
         core.SetVirtualHostNameToFolderMapping(
             TrustedContentPolicy.VirtualHostName,
