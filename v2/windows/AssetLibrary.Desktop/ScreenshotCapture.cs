@@ -41,7 +41,21 @@ internal static class ScreenshotCapture
         Size size,
         string outputPath)
     {
+        // GitHub-hosted Windows runners can have a desktop smaller than the
+        // required 1920x1080 evidence viewport. Size the WebView2 controller
+        // independently so CapturePreview does not inherit that screen cap.
+        window.WindowState = FormWindowState.Normal;
+        webView.Dock = DockStyle.None;
+        webView.Location = Point.Empty;
         window.ClientSize = size;
+        webView.Size = size;
+        if (webView.ClientSize != size)
+        {
+            throw new InvalidDataException(
+                $"WebView2 viewport size mismatch. Requested {size.Width}x{size.Height}, "
+                + $"got {webView.ClientSize.Width}x{webView.ClientSize.Height}.");
+        }
+
         await Task.Delay(400);
         await using (var stream = File.Create(outputPath))
         {

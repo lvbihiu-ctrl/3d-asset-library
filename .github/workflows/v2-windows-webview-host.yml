@@ -86,6 +86,8 @@ jobs:
           $exe = "$env:RUNNER_TEMP\v2-host\win-x64\AssetLibrary.V2.exe"
           $userData = "$env:RUNNER_TEMP\v2-host\webview2-user-data"
           $screenshots = "$env:RUNNER_TEMP\v2-host\screenshots\after"
+          $captureOut = "$env:RUNNER_TEMP\TestResults\capture-stdout.txt"
+          $captureErr = "$env:RUNNER_TEMP\TestResults\capture-stderr.txt"
           $smoke = Start-Process -FilePath $exe -ArgumentList @(
             '--smoke-test', '--user-data-dir', $userData
           ) -WindowStyle Hidden -Wait -PassThru
@@ -101,7 +103,10 @@ jobs:
           $capture = Start-Process -FilePath $exe -ArgumentList @(
             '--capture-directory', $screenshots,
             '--user-data-dir', $userData
-          ) -WindowStyle Hidden -Wait -PassThru
+          ) -WindowStyle Hidden -RedirectStandardOutput $captureOut `
+            -RedirectStandardError $captureErr -Wait -PassThru
+          Get-Content $captureOut -ErrorAction SilentlyContinue
+          Get-Content $captureErr -ErrorAction SilentlyContinue
           if ($capture.ExitCode -ne 0) {
             throw "WebView2 screenshot run failed with exit code $($capture.ExitCode)."
           }
@@ -121,6 +126,12 @@ jobs:
           $userData = "$env:RUNNER_TEMP\v2-baseline-user-data"
           git worktree add --detach $source $env:BASE_SHA
           try {
+            # Keep the base UI unchanged but use the head's off-screen capture
+            # harness so both sides are measured at the same exact pixels.
+            Copy-Item "v2\windows\AssetLibrary.Desktop\ScreenshotCapture.cs" `
+              "$source\v2\windows\AssetLibrary.Desktop\ScreenshotCapture.cs" -Force
+            Copy-Item "v2\windows\AssetLibrary.Desktop\PngDimensions.cs" `
+              "$source\v2\windows\AssetLibrary.Desktop\PngDimensions.cs" -Force
             dotnet restore "$source\v2\windows\AssetLibrary.Desktop\AssetLibrary.Desktop.csproj" --runtime win-x64
             dotnet publish "$source\v2\windows\AssetLibrary.Desktop\AssetLibrary.Desktop.csproj" `
               --configuration Release --runtime win-x64 --self-contained true `
@@ -171,3 +182,4 @@ jobs:
             ${{ runner.temp }}\v2-host\screenshots\before\*.png
             ${{ runner.temp }}\TestResults\*.trx
             ${{ runner.temp }}\TestResults\ui-tests.txt
+            ${{ runner.temp }}\TestResults\capture-*.txt
