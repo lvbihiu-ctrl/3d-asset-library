@@ -129,6 +129,7 @@ class DesktopUIContract(unittest.TestCase):
     def test_required_viewports_keep_readable_cards_and_inspector(self):
         for width, height in ((820, 600), (1016, 689), (1920, 1080)):
             self.page.set_viewport_size({"width": width, "height": height})
+            self.page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
             self.assertFalse(
                 self.page.evaluate("document.documentElement.scrollWidth > innerWidth"),
                 f"horizontal overflow at {width}x{height}",

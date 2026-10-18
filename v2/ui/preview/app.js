@@ -59,6 +59,64 @@ let hostInfo = null;
 let scanning = false;
 let clipboardBusy = false;
 let imageResults = null;
+let masonryFrame = 0;
+let dragPending = false;
+let dragCandidate = null;
+let suppressClickUntil = 0;
+
+function scheduleMasonry() {
+  if (masonryFrame) return;
+  masonryFrame = requestAnimationFrame(() => {
+    masonryFrame = 0;
+    const area = $('assets');
+    const cards = [...area.querySelectorAll('article.asset')];
+    area.style.height = '';
+    if (state.layout !== 'board' || !cards.length) return;
+    const gap = 14;
+    const columns = Math.min(cards.length, Math.max(1, Math.floor((area.clientWidth + gap) / (210 + gap))));
+    const width = (area.clientWidth - gap * (columns - 1)) / columns;
+    const bottoms = Array(columns).fill(0);
+    cards.forEach(card => { card.style.width = width + 'px'; });
+    const heights = cards.map(card => card.offsetHeight);
+    cards.forEach((card, index) => {
+      const column = bottoms.indexOf(Math.min(...bottoms));
+      card.style.left = column * (width + gap) + 'px';
+      card.style.top = bottoms[column] + 'px';
+      bottoms[column] += heights[index] + gap;
+    });
+    area.style.height = Math.max(0, Math.max(...bottoms) - gap) + 'px';
+  });
+}
+
+function canDragAsset() {
+  return realMode && !scanning && !clipboardBusy && hostInfo?.capabilities?.includes('beginAssetDrag');
+}
+document.addEventListener('pointermove', async event => {
+  if (!dragCandidate || dragPending || !(event.buttons & 1)) return;
+  if (Math.hypot(event.clientX - dragCandidate.x, event.clientY - dragCandidate.y) < 8) return;
+  const assetId = dragCandidate.assetId;
+  dragCandidate = null;
+  if (!canDragAsset()) return;
+  dragPending = true;
+  document.documentElement.dataset.dragState = 'dragging';
+  try {
+    const result = await host('beginAssetDrag', { assetId });
+    document.documentElement.dataset.dragState = result.dropped ? 'dropped' : 'cancelled';
+  } catch (error) {
+    document.documentElement.dataset.dragState = 'error';
+    toast(error.message, 'error');
+  } finally {
+    dragPending = false;
+    suppressClickUntil = performance.now() + 250;
+  }
+});
+document.addEventListener('pointerup', () => { dragCandidate = null; });
+document.addEventListener('pointercancel', () => { dragCandidate = null; });
+window.addEventListener('blur', () => { dragCandidate = null; });
+// Never let Chromium turn a cover into a URL or image-file drag payload.
+document.addEventListener('dragstart', event => {
+  if (event.target.closest?.('.asset,.inspectCover')) event.preventDefault();
+});
 
 function toast(message, type = 'info') {
   $('toast').textContent = message;
@@ -167,8 +225,35 @@ function renderCards() {
     return `<article role="listitem" aria-current="${asset.id === state.selected}" class="asset ${asset.id === state.selected ? 'selected' : ''}" data-id="${xss(asset.id)}" tabindex="${asset.id === focusId ? '0' : '-1'}" style="--ar:${asset.ratio}"><div class="cover"><img src="${xss(asset.src)}" alt="${xss(asset.name)}" loading="lazy"><span class="mark">${imageResults ? '差异 ' + imageResults.get(asset.id) + '/64' : realMode ? (asset.hasCover ? '真实封面' : '暂无封面') : '合成封面 · 未关联模型'}</span>${syntheticControls}</div><div class="assetinfo"><div class="aname" title="${xss(asset.name)}">${xss(asset.name)}</div><div class="origin">${realMode ? `${xss(asset.extension)} · ${xss(asset.folder)}` : '合成数据 · SVG'}</div><div class="tags"><span class="tag">${xss(asset.category)}</span><span class="tag">${xss(asset.tag)}</span></div><div class="assetfoot"><span class="model-state">${icon('box')}${realMode ? '原模型只读' : '无实际模型'}</span>${favorite}</div></div></article>`;
   }).join('') : emptyMessage;
 
+  if (realMode && canDragAsset() && !imageResults && librarySummary?.rootAvailable !== false) {
+    $('hintline').innerHTML = `${icon('info')}<span>真实素材只读索引 · 拖动卡片可拖出原模型；选中后 Ctrl+V 设置封面。</span>`;
+  }
   const cardElements = [...$('assets').querySelectorAll('article.asset')];
   cardElements.forEach((element, index) => {
+    const image = element.querySelector('img');
+    image.draggable = false;
+    const measureImage = () => {
+      const asset = visible[index];
+      if (!asset.real || !image.naturalWidth || !image.naturalHeight) return;
+      asset.ratio = image.naturalWidth / image.naturalHeight;
+      element.style.setProperty('--ar', asset.ratio);
+      scheduleMasonry();
+    };
+    image.addEventListener('load', measureImage);
+    if (image.complete) measureImage();
+    element.addEventListener('pointerdown', event => {
+      if (event.button !== 0 || event.target.closest('button,input') || !canDragAsset()) return;
+      state.selected = element.dataset.id;
+      cardElements.forEach(card => {
+        const selected = card === element;
+        card.classList.toggle('selected', selected);
+        card.setAttribute('aria-current', String(selected));
+        card.tabIndex = selected ? 0 : -1;
+      });
+      renderDetail();
+      updateCapabilityControls();
+      dragCandidate = { assetId: element.dataset.id, x: event.clientX, y: event.clientY };
+    });
     const select = () => {
       state.selected = element.dataset.id;
       renderCards();
@@ -176,7 +261,7 @@ function renderCards() {
       updateCapabilityControls();
     };
     element.addEventListener('click', event => {
-      if (!event.target.closest('button,input')) select();
+      if (!dragPending && performance.now() > suppressClickUntil && !event.target.closest('button,input')) select();
     });
     element.addEventListener('keydown', event => {
       if (event.key === 'Enter' || event.key === ' ') {
@@ -211,6 +296,7 @@ function renderCards() {
   const clear = $('clearFiltersEmpty');
   if (clear) clear.onclick = resetFilters;
   renderBatch();
+  scheduleMasonry();
 }
 
 function renderBatch() {
@@ -245,6 +331,8 @@ function renderDetail() {
     const modified = asset.modifiedUtc ? new Date(asset.modifiedUtc).toLocaleString() : '未知';
     $('detail').innerHTML = `<div class="inspectCover"><img src="${xss(asset.src)}" alt="${xss(asset.name)}"></div><div class="detailName">${xss(asset.name)}</div><div class="small">${asset.hasCover ? '已关联真实封面 · Ctrl+V 可更换' : '选中后 Ctrl+V 粘贴图片设置封面'}</div><div class="rule"></div><div class="fieldLabel">原文件（只读）</div><div class="small">${xss(asset.relativePath)}</div><div class="rule"></div><div class="small">格式：<b>${xss(asset.extension)}</b><br>大小：${xss(formatBytes(asset.sizeBytes))}<br>修改时间：${xss(modified)}</div><div class="rule"></div><button type="button" class="toolbtn primary" id="detailLocate">${icon('locate')}在资源管理器中定位</button><div class="unavailable-callout">${icon('info')}<span><b>C4D 拖入尚未接入</b><br>Issue #15 仍待实机验证。</span></div><div class="inspectNote">封面和索引保存于独立缓存，不修改原素材。</div>`;
     $('detailLocate').onclick = locateSelected;
+    $('detail').querySelector('img').draggable = false;
+    if (canDragAsset()) $('detail').querySelector('.unavailable-callout').innerHTML = `${icon('info')}<span><b>拖动左侧卡片，拖出原模型</b><br>在 C4D 中按住 Shift 拖入可尝试合并；接收结果以 C4D 为准。</span>`;
     return;
   }
   $('detail').innerHTML = `<div class="inspectCover"><img src="${xss(asset.src)}" alt="${xss(asset.name)}"></div><div class="detailName">${xss(asset.name)}</div><div class="small">预览来源：程序合成 SVG</div><div class="rule"></div><div class="fieldLabel">素材文件夹（合成）</div><div class="small">${xss(asset.folder)}</div><div class="rule"></div><div class="fieldLabel">虚拟分类（仅当前会话）</div><select id="setcat" aria-label="虚拟分类">${cats.map(category => `<option ${asset.category === category ? 'selected' : ''}>${xss(category)}</option>`).join('')}</select><div class="rule"></div><div class="small">模型文件：<b>未关联</b></div><div class="unavailable-callout">${icon('info')}<span><b>C4D 拖入尚未接入</b><br>Issue #15 仍待实机验证。</span></div><div class="inspectNote">真实文件必须由 C# 从本地素材 ID 校验后发出，网页不会合成路径冒充模型。</div>`;
@@ -513,6 +601,11 @@ $('theme').onclick = () => {
   $('theme').querySelector('.button-label').textContent = state.dark ? '浅色' : '深色';
 };
 
+let lastMasonryWidth = -1;
+new ResizeObserver(entries => {
+  const width = entries[0].contentRect.width;
+  if (width !== lastMasonryWidth) { lastMasonryWidth = width; scheduleMasonry(); }
+}).observe($('assets'));
 render();
 connectNativeHost();
 })();

@@ -19,6 +19,7 @@ public sealed class HostMessageDispatcher
     private readonly Func<LibraryCatalog?>? _getLibrary;
     private readonly Func<string, Task<LibraryAsset>>? _setCoverFromClipboard;
     private readonly Func<Task<ImageSearchResult>>? _searchSimilarClipboard;
+    private readonly Func<string, Task<bool>>? _beginAssetDrag;
 
     public HostMessageDispatcher(
         Func<HostInfo> hostInfo,
@@ -26,7 +27,8 @@ public sealed class HostMessageDispatcher
         Func<string, bool>? locateAsset = null,
         Func<LibraryCatalog?>? getLibrary = null,
         Func<string, Task<LibraryAsset>>? setCoverFromClipboard = null,
-        Func<Task<ImageSearchResult>>? searchSimilarClipboard = null)
+        Func<Task<ImageSearchResult>>? searchSimilarClipboard = null,
+        Func<string, Task<bool>>? beginAssetDrag = null)
     {
         _hostInfo = hostInfo ?? throw new ArgumentNullException(nameof(hostInfo));
         _importLibrary = importLibrary;
@@ -34,6 +36,7 @@ public sealed class HostMessageDispatcher
         _getLibrary = getLibrary;
         _setCoverFromClipboard = setCoverFromClipboard;
         _searchSimilarClipboard = searchSimilarClipboard;
+        _beginAssetDrag = beginAssetDrag;
     }
 
     public string Dispatch(string? rawMessage) =>
@@ -79,6 +82,7 @@ public sealed class HostMessageDispatcher
                 "getHostInfo" => DispatchHostInfo(id!, payload),
                 "importFolder" => await DispatchImportAsync(id!, payload),
                 "locateAsset" => DispatchLocate(id!, payload),
+                "beginAssetDrag" => await DispatchDragAsync(id!, payload),
                 "getLibrary" => DispatchGetLibrary(id!, payload),
                 "setCoverFromClipboard" => await DispatchClipboardAsync(id!, payload, true),
                 "searchSimilarClipboard" => await DispatchClipboardAsync(id!, payload, false),
@@ -114,6 +118,7 @@ public sealed class HostMessageDispatcher
             if (_getLibrary is not null) capabilities.Add("getLibrary");
             if (_setCoverFromClipboard is not null) capabilities.Add("setCoverFromClipboard");
             if (_searchSimilarClipboard is not null) capabilities.Add("searchSimilarClipboard");
+            if (_beginAssetDrag is not null) capabilities.Add("beginAssetDrag");
 
             return Success(id, new
             {
@@ -184,6 +189,29 @@ public sealed class HostMessageDispatcher
         {
             Trace.TraceError($"Native locate failed: {exception}");
             return Error(id, "locate_failed", "Windows 资源管理器无法定位该素材。");
+        }
+    }
+
+    private async Task<string> DispatchDragAsync(string id, JsonElement payload)
+    {
+        if (_beginAssetDrag is null) return Error(id, "action_not_allowed", "原生文件拖拽尚未接入。");
+        var properties = payload.EnumerateObject().ToArray();
+        var assetId = ReadString(payload, "assetId");
+        if (properties.Length != 1 || properties[0].Name != "assetId" || !IsValidAssetId(assetId))
+            return Error(id, "invalid_payload", "拖拽只接受有效素材 ID，不接受网页路径或封面网址。");
+        try
+        {
+            // A successful OLE drop is not proof that the receiving application opened the model.
+            return Success(id, new { dropped = await _beginAssetDrag(assetId!) });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return Error(id, "drag_unavailable", exception.Message);
+        }
+        catch (Exception exception)
+        {
+            Trace.TraceError($"Native file drag failed: {exception}");
+            return Error(id, "drag_failed", "文件拖出失败，请确认原模型可读取且接收软件没有阻塞对话框。");
         }
     }
 

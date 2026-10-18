@@ -23,6 +23,7 @@ internal sealed class MainWindow : Form
     private readonly ImageSimilarity _imageSearch = new();
     private readonly SemaphoreSlim _libraryWork = new(1, 1);
     private string? _lastAutomatedLocatedAssetId;
+    private bool _dragging;
 
     public MainWindow(HostOptions options)
     {
@@ -41,7 +42,8 @@ internal sealed class MainWindow : Form
             LocateAsset,
             () => _librarySession.Catalog,
             SetCoverFromClipboardAsync,
-            SearchSimilarClipboardAsync);
+            SearchSimilarClipboardAsync,
+            BeginAssetDragAsync);
         Text = "3D 素材管理器 V2";
         ClientSize = new Size(1016, 689);
         MinimumSize = new Size(820, 600);
@@ -51,6 +53,25 @@ internal sealed class MainWindow : Form
     }
 
     public int ExitCode { get; private set; }
+
+    private async Task<bool> BeginAssetDragAsync(string assetId)
+    {
+        // Leave WebView2's message callback before entering OLE's nested message loop.
+        await Task.Yield();
+        if (IsDisposed || Disposing) return false;
+        if (_dragging || _libraryWork.CurrentCount == 0)
+            throw new InvalidOperationException("请等待当前素材操作结束后再拖出。");
+        if ((MouseButtons & MouseButtons.Left) == 0)
+            throw new InvalidOperationException("请按住素材卡片并拖向 C4D 窗口。");
+        var payload = AssetFileDrag.CreatePayload(_librarySession, assetId);
+        _dragging = true;
+        try
+        {
+            // Windows supplies the physical Shift state to the receiving application's OLE handler.
+            return _webView.DoDragDrop(payload, DragDropEffects.Copy) != DragDropEffects.None;
+        }
+        finally { _dragging = false; }
+    }
 
     private async void OnShown(object? sender, EventArgs eventArgs)
     {

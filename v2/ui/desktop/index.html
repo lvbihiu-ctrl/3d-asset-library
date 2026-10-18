@@ -103,6 +103,12 @@ body.dark .tag{background:#2c384a;color:#d0daea}body.dark .tag:nth-child(2){back
 @media(max-width:900px){.appbody{grid-template-columns:140px minmax(0,1fr) 190px}.native-actions .mode{max-width:270px}.app.boardmode .assetgrid{columns:200px}.brand{min-width:125px}.brand small{display:none}.main{padding-inline:10px}.inspector{padding-inline:10px}}
 @media(max-width:760px){.toolbar{flex-wrap:wrap}.search-wrap{order:2;width:100%;max-width:none}.appbody{grid-template-columns:140px minmax(0,1fr)}.inspector{display:none}.native-actions{overflow-x:auto}.native-actions .mode{display:none}.main{padding:14px 10px}.app.listmode .assetinfo{display:block}.app.listmode .tags{margin-top:6px}}
 @media (prefers-reduced-motion: reduce){*,*::before,*::after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}}
+/* Shortest-column masonry: count-aware, image-ratio-aware, and resized by app.js. */
+.app.boardmode .assetgrid{position:relative;display:block;columns:auto;column-gap:normal}
+.app.boardmode .asset{position:absolute;display:block;margin:0;break-inside:auto}
+.app.boardmode .cover{height:auto;aspect-ratio:var(--ar)}
+.app.boardmode .cover img,.inspectCover img{object-fit:contain}
+.asset,.inspectCover{user-select:none}.cover img,.inspectCover img{-webkit-user-drag:none}
 </style>
 </head>
 <body>
