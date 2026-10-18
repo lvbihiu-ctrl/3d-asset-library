@@ -35,4 +35,4 @@ Date: 2026-10-19. User priority: make the existing V2 usable, enable the two mis
 - Re-ran final published EXE cover workflow and a separate restart process after adding clipboard retry: both exit 0. Retry mitigates contention, but the earlier timeout's exact cause remains unproven.
 - Local runnable ZIP: `.artifacts/clipboard-delivery/3D-Asset-Library-V2-Covers-Search-win-x64.zip`.
 - ZIP SHA256: `2eadc649265c725c80050ef3cf0783057a2011c50ae1c6969f58adb9e96b796c`.
-- Public screenshots in this directory show only synthetic gradient covers, never private commercial work.
+- Synthetic gradient screenshots remain in the local delivery directory rather than source control, in accordance with the repository's binary-file guard. CI's real WebView2 screenshots are distributed through the Windows build artifact. Private commercial screenshots remain local.

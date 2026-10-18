@@ -14,7 +14,7 @@ No stable v0.1.7 script or update manifest changed. No private catalog, source m
 - Actual published EXE/WebView2 cover-button save, Ctrl+V handler, distinct image matching Top-1, invalid clipboard errors, source immutability, and separate-process restart persistence passed.
 - Actual legacy import restored two records and covers; six legacy files and 36 authorized source files hash-identical before/after.
 - Actual installed EXE launched from the replaced desktop shortcut; all 282 copied files SHA256-verified. Separate installed-EXE screenshot verification exited 0.
-- Screenshot PNG headers validated at 1016x689 and 1920x1080; public images are synthetic only. See [Windows results](WINDOWS_RESULTS.md).
+- Screenshot PNG headers validated at 1016x689 and 1920x1080. Local synthetic captures remain outside source control; CI distributes its real WebView2 captures in the Windows build artifact. See [Windows results](https://github.com/lvbihiu-ctrl/3d-asset-library/blob/codex/v2-cover-image-search/docs/v2/evidence/clipboard-core/WINDOWS_RESULTS.md).
 - One intermediate repeat timed out on the second cover shortcut. Subsequent fresh runs passed; exact original cause remains unproven. Added bounded STA retry and diagnostic state; final feature/restart runs both passed. Not concealing the intermittent test result.
 
 ## Still not delivered
