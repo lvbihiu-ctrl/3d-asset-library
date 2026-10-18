@@ -38,37 +38,15 @@
   });
 
   document.addEventListener('DOMContentLoaded', async () => {
-    // These browser-prototype actions are not part of the Issue #14 native
-    // capability slice. Keep them out of the Windows host until they have a
-    // real native implementation instead of exposing controls that cannot work.
-    ['btnBackup', 'btnRestore', 'btnRoot'].forEach(id => {
-      const control = document.getElementById(id);
-      if (control) control.style.display = 'none';
-    });
-
-    const status = document.createElement('div');
-    status.id = 'nativeHostStatus';
-    Object.assign(status.style, {
-      position: 'fixed', left: '12px', bottom: '12px', zIndex: '9999',
-      padding: '6px 10px', borderRadius: '999px', font: '600 11px/1.2 system-ui',
-      background: '#fff7db', color: '#6f5714', border: '1px solid #ead78a',
-      boxShadow: '0 4px 16px rgba(32,45,70,.12)'
-    });
-    status.textContent = '正在连接 Windows 客户端…';
-    document.body.append(status);
     try {
       const info = await request('getHostInfo', {});
       document.documentElement.dataset.nativeHost = 'connected';
-      status.textContent = `Windows 客户端已连接 · ${info.productVersion}`;
-      status.style.background = '#e9f8ef';
-      status.style.color = '#17683a';
-      status.style.borderColor = '#b7e2c6';
+      window.dispatchEvent(new CustomEvent('assetlibrary:hostinfo', { detail: info }));
     } catch (error) {
       document.documentElement.dataset.nativeHost = 'error';
-      status.textContent = `连接失败：${error.message}`;
-      status.style.background = '#fff0f0';
-      status.style.color = '#9b2828';
-      status.style.borderColor = '#f0bbbb';
+      window.dispatchEvent(new CustomEvent('assetlibrary:hosterror', {
+        detail: { message: error.message },
+      }));
     }
   });
 })();
