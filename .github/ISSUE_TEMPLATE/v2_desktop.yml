@@ -1,0 +1,35 @@
+name: V2 desktop implementation
+description: One testable end-to-end V2 task for Codex
+title: "[V2] "
+labels: []
+body:
+  - type: textarea
+    id: objective
+    attributes:
+      label: User-visible objective
+      description: Describe one observable behavior, not a layer-by-layer coding task
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Include tests that can go red on this issue; Windows/C4D evidence where relevant
+    validations:
+      required: true
+  - type: textarea
+    id: blockers
+    attributes:
+      label: Blocked by
+      description: Link prerequisite GitHub Issue numbers; write None if unblocked
+      value: "None"
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety gates
+      options:
+        - label: No change to released v0.1.7 or latest.json
+        - label: No customer models, covers or textures in git
+        - label: No claims of Windows/C4D acceptance without real execution
