@@ -114,46 +114,52 @@ jobs:
             Write-Host "$($_.Name) $($_.Length) bytes"
           }
 
-      - name: Verify real read-only library flow with 1000 records
+      - name: Verify real read-only library flow with 100 and 1000 records
         run: |
           $exe = "$env:RUNNER_TEMP\v2-host\win-x64\AssetLibrary.V2.exe"
-          $testRoot = "$env:RUNNER_TEMP\v2-real-library-1000"
-          $userData = "$env:RUNNER_TEMP\v2-host\real-library-webview2"
-          $testOut = "$env:RUNNER_TEMP\TestResults\real-library-stdout.txt"
-          $testErr = "$env:RUNNER_TEMP\TestResults\real-library-stderr.txt"
-          New-Item $testRoot -ItemType Directory -Force | Out-Null
-          1..1000 | ForEach-Object {
-            [IO.File]::WriteAllText(
-              (Join-Path $testRoot ("asset-{0:D4}.obj" -f $_)),
-              "synthetic test record $_")
-          }
-          [IO.File]::WriteAllBytes(
-            (Join-Path $testRoot 'asset-0001.png'),
-            [Convert]::FromBase64String('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='))
-          $before = @{}
-          Get-ChildItem $testRoot -File -Recurse | ForEach-Object {
-            $before[$_.FullName] = (Get-FileHash $_.FullName -Algorithm SHA256).Hash
-          }
-          $real = Start-Process -FilePath $exe -ArgumentList @(
-            '--library-test-root', $testRoot,
-            '--user-data-dir', $userData
-          ) -WindowStyle Hidden -RedirectStandardOutput $testOut `
-            -RedirectStandardError $testErr -Wait -PassThru
-          Get-Content $testOut -ErrorAction SilentlyContinue
-          Get-Content $testErr -ErrorAction SilentlyContinue
-          if ($real.ExitCode -ne 0) {
-            throw "Real library WebView2 test failed with exit code $($real.ExitCode)."
-          }
-          $after = @{}
-          Get-ChildItem $testRoot -File -Recurse | ForEach-Object {
-            $after[$_.FullName] = (Get-FileHash $_.FullName -Algorithm SHA256).Hash
-          }
-          $changed = @($before.Keys | Where-Object {
-            !$after.ContainsKey($_) -or $after[$_] -ne $before[$_]
-          })
-          $added = @($after.Keys | Where-Object { !$before.ContainsKey($_) })
-          if ($changed.Count -ne 0 -or $added.Count -ne 0) {
-            throw "Read-only scan changed $($changed.Count) files and added $($added.Count) files."
+          foreach ($count in @(100, 1000)) {
+            $testRoot = "$env:RUNNER_TEMP\v2-real-library-$count"
+            $userData = "$env:RUNNER_TEMP\v2-host\real-library-webview2-$count"
+            $testOut = "$env:RUNNER_TEMP\TestResults\real-library-$count-stdout.txt"
+            $testErr = "$env:RUNNER_TEMP\TestResults\real-library-$count-stderr.txt"
+            New-Item $testRoot -ItemType Directory -Force | Out-Null
+            1..$count | ForEach-Object {
+              [IO.File]::WriteAllText(
+                (Join-Path $testRoot ("asset-{0:D4}.obj" -f $_)),
+                "synthetic test record $_")
+            }
+            [IO.File]::WriteAllBytes(
+              (Join-Path $testRoot 'asset-0001.png'),
+              [Convert]::FromBase64String('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='))
+            $before = @{}
+            Get-ChildItem $testRoot -File -Recurse | ForEach-Object {
+              $before[$_.FullName] = (Get-FileHash $_.FullName -Algorithm SHA256).Hash
+            }
+            $realArguments = @(
+              '--library-test-root', $testRoot,
+              '--user-data-dir', $userData
+            )
+            if ($count -eq 100) {
+              $realArguments += @('--capture-directory', "$env:RUNNER_TEMP\v2-host\screenshots\real-library")
+            }
+            $real = Start-Process -FilePath $exe -ArgumentList $realArguments -WindowStyle Hidden -RedirectStandardOutput $testOut `
+              -RedirectStandardError $testErr -Wait -PassThru
+            Get-Content $testOut -ErrorAction SilentlyContinue
+            Get-Content $testErr -ErrorAction SilentlyContinue
+            if ($real.ExitCode -ne 0) {
+              throw "Real library WebView2 $count-record test failed with exit code $($real.ExitCode)."
+            }
+            $after = @{}
+            Get-ChildItem $testRoot -File -Recurse | ForEach-Object {
+              $after[$_.FullName] = (Get-FileHash $_.FullName -Algorithm SHA256).Hash
+            }
+            $changed = @($before.Keys | Where-Object {
+              !$after.ContainsKey($_) -or $after[$_] -ne $before[$_]
+            })
+            $added = @($after.Keys | Where-Object { !$before.ContainsKey($_) })
+            if ($changed.Count -ne 0 -or $added.Count -ne 0) {
+              throw "Read-only $count-record scan changed $($changed.Count) files and added $($added.Count) files."
+            }
           }
 
       - name: Capture v2-dev UI before/after comparison
@@ -230,6 +236,7 @@ jobs:
             ${{ runner.temp }}\3D-Asset-Library-V2-Issue33-win-x64.zip
             ${{ runner.temp }}\v2-host\screenshots\after\*.png
             ${{ runner.temp }}\v2-host\screenshots\before\*.png
+            ${{ runner.temp }}\v2-host\screenshots\real-library\*.png
             ${{ runner.temp }}\TestResults\*.trx
             ${{ runner.temp }}\TestResults\ui-tests.txt
             ${{ runner.temp }}\TestResults\capture-*.txt

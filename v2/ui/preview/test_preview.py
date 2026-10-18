@@ -50,12 +50,13 @@ class UIContract(unittest.TestCase):
         self.page.locator('#setcat').select_option(label='未分类')
         self.assertIn('未分类',self.page.locator('#detail').inner_text())
     def test_no_native_check_never_says_latest(self):
-        self.page.locator('#checkUpdate').click()
-        self.assertIn('检查更新失败',self.page.locator('#updateStatus').inner_text())
+        self.assertTrue(self.page.locator('#checkUpdate').is_disabled())
+        self.assertIn('更新服务尚未接入',self.page.locator('#checkUpdate').get_attribute('title'))
+        self.assertNotIn('已是最新',self.page.locator('#updateStatus').inner_text())
         self.assertTrue(self.page.locator('#nativeUpdate').is_disabled())
     def test_no_native_actions_explain_host_missing(self):
-        self.page.locator('#importFolder').click()
-        self.assertIn('HTML 预览',self.page.locator('#toast').inner_text())
+        self.assertTrue(self.page.locator('#importFolder').is_disabled())
+        self.assertIn('尚未接入',self.page.locator('#importFolder').get_attribute('title'))
     def test_compact_and_large_viewports_no_horizontal_page_overflow(self):
         for width,height in [(1016,689),(1920,1080)]:
             self.page.set_viewport_size({'width':width,'height':height})

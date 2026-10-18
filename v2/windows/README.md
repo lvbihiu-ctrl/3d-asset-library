@@ -24,6 +24,10 @@ It remains isolated from the stable v0.1.7 client and update manifest.
   accepting a path from page JavaScript or modifying source files.
 - Same-directory, same-name PNG/JPG/JPEG/WebP/BMP covers are served through a
   native ID whitelist. Missing covers use an explicit placeholder.
+  Covers use a separate, unmapped HTTPS origin so WebView2 can intercept each
+  request instead of bypassing the handler through static folder mapping.
+- Scan progress reports folders, models, and read errors. Folder-scan requests
+  remain pending until native completion instead of expiring after five minutes.
 - Real filenames, folders, extension filters, search, details, and Explorer
   locate are connected. Locate accepts only a native-issued 64-character
   asset ID; the page cannot submit an arbitrary path.
@@ -68,7 +72,11 @@ Start-Process .artifacts\publish\win-x64\AssetLibrary.V2.exe `
 
 Run the real read-only library integration check against a user-authorized
 test directory. The test verifies that native and rendered item counts agree,
-search works, and the locate control is enabled; callers must independently
+search works, matched cover images actually decode, and clicking the locate
+button reaches the trusted native asset resolver. In this automated mode the
+final Explorer launch is replaced by a recorder to avoid opening shell windows
+in CI; actual Explorer file selection remains a separate manual acceptance
+check. Callers must independently
 compare source hashes before and after when using real files:
 
 ```powershell

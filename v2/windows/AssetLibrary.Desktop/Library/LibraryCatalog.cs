@@ -10,3 +10,8 @@ public sealed record LibraryCatalog(
 
 public sealed record ImportLibraryResult(bool Cancelled, LibraryCatalog? Catalog);
 
+public sealed record LibraryScanProgress(
+    int DirectoryCount,
+    int AssetCount,
+    int ErrorCount,
+    string CurrentFolder);

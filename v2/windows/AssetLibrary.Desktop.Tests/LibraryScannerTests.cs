@@ -72,6 +72,23 @@ public sealed class LibraryScannerTests : IDisposable
         Assert.Equal(count, catalog.Assets.Select(asset => asset.Id).Distinct().Count());
     }
 
+    [Fact]
+    public void Scan_ReportsVisibleDirectoryAssetAndErrorCounts()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "一级", "二级"));
+        File.WriteAllText(Path.Combine(_root, "一级", "asset.obj"), "record");
+        var updates = new List<LibraryScanProgress>();
+
+        var catalog = new LibraryScanner().Scan(
+            _root,
+            progress: new SynchronousProgress<LibraryScanProgress>(updates.Add));
+
+        Assert.NotEmpty(updates);
+        Assert.Equal(catalog.Assets.Count, updates[^1].AssetCount);
+        Assert.Equal(catalog.ErrorCount, updates[^1].ErrorCount);
+        Assert.True(updates[^1].DirectoryCount >= 3);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))
@@ -88,5 +105,10 @@ public sealed class LibraryScannerTests : IDisposable
                 path => Path.GetRelativePath(root, path),
                 path => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))),
                 StringComparer.OrdinalIgnoreCase);
+    }
+
+    private sealed class SynchronousProgress<T>(Action<T> report) : IProgress<T>
+    {
+        public void Report(T value) => report(value);
     }
 }

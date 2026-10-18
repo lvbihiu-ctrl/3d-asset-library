@@ -13,7 +13,10 @@ public sealed class LibraryScanner
     private static readonly string[] CoverExtensions =
         [".png", ".jpg", ".jpeg", ".webp", ".bmp"];
 
-    public LibraryCatalog Scan(string rootPath, CancellationToken cancellationToken = default)
+    public LibraryCatalog Scan(
+        string rootPath,
+        CancellationToken cancellationToken = default,
+        IProgress<LibraryScanProgress>? progress = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
         var root = Path.GetFullPath(rootPath);
@@ -25,13 +28,17 @@ public sealed class LibraryScanner
         var stopwatch = Stopwatch.StartNew();
         var assets = new List<LibraryAsset>();
         var errors = 0;
+        var directories = 0;
         var pending = new Stack<DirectoryInfo>();
         pending.Push(new DirectoryInfo(root));
+
+        progress?.Report(new LibraryScanProgress(0, 0, 0, "."));
 
         while (pending.Count > 0)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var directory = pending.Pop();
+            directories++;
 
             try
             {
@@ -81,6 +88,12 @@ public sealed class LibraryScanner
             {
                 errors++;
             }
+
+            progress?.Report(new LibraryScanProgress(
+                directories,
+                assets.Count,
+                errors,
+                Path.GetRelativePath(root, directory.FullName)));
         }
 
         stopwatch.Stop();

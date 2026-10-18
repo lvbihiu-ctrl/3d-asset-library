@@ -19,6 +19,7 @@ internal sealed class MainWindow : Form
     private readonly HostMessageDispatcher _dispatcher;
     private readonly LibraryScanner _libraryScanner = new();
     private readonly LibrarySession _librarySession = new();
+    private string? _lastAutomatedLocatedAssetId;
 
     public MainWindow(HostOptions options)
     {
@@ -26,7 +27,7 @@ internal sealed class MainWindow : Form
         _dispatcher = new HostMessageDispatcher(
             CreateHostInfo,
             ImportLibraryAsync,
-            assetId => ExplorerAssetLocator.Locate(_librarySession, assetId));
+            LocateAsset);
         Text = "3D 素材管理器 V2";
         ClientSize = new Size(1016, 689);
         MinimumSize = new Size(820, 600);
@@ -45,8 +46,19 @@ internal sealed class MainWindow : Form
             await InitializeWebViewAsync();
             if (_options.LibraryTestRoot is not null)
             {
-                await WebViewInteractionSmoke.VerifyRealLibraryAsync(_webView, () => _librarySession.Count);
+                await WebViewInteractionSmoke.VerifyRealLibraryAsync(
+                    _webView,
+                    () => _librarySession.Count,
+                    () => _lastAutomatedLocatedAssetId);
                 Console.WriteLine("REAL LIBRARY PASS: 真实目录只读扫描、卡片、搜索和定位入口已在 WebView2 中验证。");
+                if (_options.CaptureDirectory is not null)
+                {
+                    await ScreenshotCapture.CaptureRequiredAsync(
+                        _webView,
+                        this,
+                        _options.CaptureDirectory);
+                }
+
                 Close();
                 return;
             }
@@ -207,9 +219,12 @@ internal sealed class MainWindow : Form
 
     private async Task<ImportLibraryResult> ImportLibraryAsync()
     {
+        var progress = new Progress<LibraryScanProgress>(ReportScanProgress);
         if (_options.LibraryTestRoot is not null)
         {
-            var automatedCatalog = await Task.Run(() => _libraryScanner.Scan(_options.LibraryTestRoot));
+            var automatedCatalog = await Task.Run(() => _libraryScanner.Scan(
+                _options.LibraryTestRoot,
+                progress: progress));
             _librarySession.Replace(automatedCatalog);
             return new ImportLibraryResult(false, automatedCatalog);
         }
@@ -227,23 +242,58 @@ internal sealed class MainWindow : Form
         }
 
         var selectedPath = Path.GetFullPath(dialog.SelectedPath);
-        var catalog = await Task.Run(() => _libraryScanner.Scan(selectedPath));
+        var catalog = await Task.Run(() => _libraryScanner.Scan(selectedPath, progress: progress));
         _librarySession.Replace(catalog);
         return new ImportLibraryResult(false, catalog);
     }
 
-    private bool TryServeCover(CoreWebView2 core, CoreWebView2WebResourceRequestedEventArgs args)
+    private void ReportScanProgress(LibraryScanProgress progress)
     {
-        if (!TrustedContentPolicy.IsTrustedResource(args.Request.Uri)
-            || !Uri.TryCreate(args.Request.Uri, UriKind.Absolute, out var uri)
-            || !uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
-            || !uri.Host.Equals(TrustedContentPolicy.VirtualHostName, StringComparison.OrdinalIgnoreCase)
-            || !uri.AbsolutePath.StartsWith("/__cover/", StringComparison.Ordinal))
+        if (_webView.IsDisposed || _webView.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        var message = JsonSerializer.Serialize(new
+        {
+            eventName = "scanProgress",
+            detail = new
+            {
+                progress.DirectoryCount,
+                progress.AssetCount,
+                progress.ErrorCount,
+                progress.CurrentFolder,
+            },
+        }, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+        _webView.CoreWebView2.PostWebMessageAsJson(message);
+    }
+
+    private bool LocateAsset(string assetId)
+    {
+        if (_options.LibraryTestRoot is null)
+        {
+            return ExplorerAssetLocator.Locate(_librarySession, assetId);
+        }
+
+        if (!_librarySession.TryGetAsset(assetId, out var asset)
+            || asset is null
+            || !File.Exists(asset.FullPath))
         {
             return false;
         }
 
-        var assetId = uri.AbsolutePath["/__cover/".Length..];
+        _lastAutomatedLocatedAssetId = assetId;
+        return true;
+    }
+
+    private bool TryServeCover(CoreWebView2 core, CoreWebView2WebResourceRequestedEventArgs args)
+    {
+        if (!TrustedContentPolicy.IsTrustedCoverResource(args.Request.Uri))
+        {
+            return false;
+        }
+
+        var assetId = new Uri(args.Request.Uri).AbsolutePath[1..];
         if (!_librarySession.TryGetCover(assetId, out var coverPath) || coverPath is null)
         {
             args.Response = core.Environment.CreateWebResourceResponse(

@@ -9,8 +9,10 @@
     if (!transport) return Promise.reject(new Error('当前页面没有 Windows 原生宿主。'));
     const id = `page-${Date.now()}-${++sequence}`;
     return new Promise((resolve, reject) => {
-      const timeoutMs = action === 'importFolder' ? 5 * 60 * 1000 : 5000;
-      const timer = window.setTimeout(() => {
+      // Folder scans can legitimately exceed five minutes on large or slow disks.
+      // Keep the request pending so the page cannot diverge from the native session.
+      const timeoutMs = action === 'importFolder' ? null : 5000;
+      const timer = timeoutMs === null ? null : window.setTimeout(() => {
         pending.delete(id);
         reject(new Error('Windows 宿主响应超时。'));
       }, timeoutMs);
@@ -22,10 +24,17 @@
   if (transport) {
     transport.addEventListener('message', event => {
       const response = event.data;
-      if (!response || typeof response.id !== 'string') return;
+      if (!response) return;
+      if (typeof response.eventName === 'string') {
+        window.dispatchEvent(new CustomEvent(`assetlibrary:${response.eventName}`, {
+          detail: response.detail || {},
+        }));
+        return;
+      }
+      if (typeof response.id !== 'string') return;
       const waiting = pending.get(response.id);
       if (!waiting) return;
-      window.clearTimeout(waiting.timer);
+      if (waiting.timer !== null) window.clearTimeout(waiting.timer);
       pending.delete(response.id);
       if (response.ok === true) waiting.resolve(response.result);
       else waiting.reject(new Error(response.error?.message || 'Windows 宿主拒绝了请求。'));

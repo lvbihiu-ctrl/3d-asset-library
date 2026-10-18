@@ -364,7 +364,7 @@ function applyRealCatalog(catalog) {
     tag: asset.hasCover ? '有封面' : '缺封面',
     source: asset.fileName,
     ratio: 1.34,
-    src: asset.hasCover ? `/__cover/${encodeURIComponent(asset.id)}` : missingCover(asset.extension),
+    src: asset.hasCover ? `https://assetlibrary-covers.local/${encodeURIComponent(asset.id)}` : missingCover(asset.extension),
     fav: false,
     real: true,
   }));
@@ -411,6 +411,17 @@ async function locateSelected() {
   const result = await nativeOperation('locateAsset', { assetId: state.selected });
   if (result?.located) toast('已在资源管理器中定位原文件');
 }
+
+window.addEventListener('assetlibrary:scanProgress', event => {
+  if (!scanning) return;
+  const progress = event.detail || {};
+  const directories = Number(progress.directoryCount || 0);
+  const assets = Number(progress.assetCount || 0);
+  const errors = Number(progress.errorCount || 0);
+  const folder = String(progress.currentFolder || '.');
+  setNativeStatus('connecting', `正在只读扫描 · ${assets} 个模型 · ${directories} 个文件夹`);
+  $('hintline').innerHTML = `${icon('info')}<span><b>扫描进行中：</b>${assets} 个模型 · ${directories} 个文件夹 · ${errors} 个读取错误<br><span class="small">${xss(folder)}</span></span>`;
+});
 
 $('pasteCover').onclick = () => nativeOperation('setCoverFromClipboard', { assetId: state.selected });
 $('findImage').onclick = () => nativeOperation('searchSimilarClipboard');

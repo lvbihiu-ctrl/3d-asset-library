@@ -75,7 +75,10 @@ internal static class WebViewInteractionSmoke
         }
     }
 
-    public static async Task VerifyRealLibraryAsync(WebView2 webView, Func<int> expectedCount)
+    public static async Task VerifyRealLibraryAsync(
+        WebView2 webView,
+        Func<int> expectedCount,
+        Func<string?> locatedAssetId)
     {
         await webView.CoreWebView2.ExecuteScriptAsync(
             "document.querySelector('#importFolder').click(); true");
@@ -97,6 +100,7 @@ internal static class WebViewInteractionSmoke
             (() => {
               const cards = [...document.querySelectorAll('#assets article.asset')];
               if (!cards.length) return { count: 0 };
+              const firstId = cards[0].dataset.id || '';
               const firstName = cards[0].querySelector('.aname')?.textContent || '';
               const search = document.querySelector('#search');
               search.value = firstName;
@@ -112,6 +116,7 @@ internal static class WebViewInteractionSmoke
                 pageCount: document.querySelector('#pageCount')?.textContent || '',
                 hint: document.querySelector('#hintline')?.textContent || '',
                 locateEnabled: !document.querySelector('#locateFile')?.disabled,
+                firstId,
                 modelState: cards[0].querySelector('.model-state')?.textContent || ''
               };
             })()
@@ -137,6 +142,38 @@ internal static class WebViewInteractionSmoke
         {
             throw new InvalidDataException($"Real library WebView2 verification failed: {rawResult}");
         }
+
+        var coverDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        var coversLoaded = false;
+        while (DateTime.UtcNow < coverDeadline)
+        {
+            var coverState = await webView.CoreWebView2.ExecuteScriptAsync(
+                "[...document.querySelectorAll('img[src^=\"https://assetlibrary-covers.local/\"]')]"
+                + ".every(image => image.complete && image.naturalWidth > 0)");
+            if (coverState == "true")
+            {
+                coversLoaded = true;
+                break;
+            }
+            await Task.Delay(100).ConfigureAwait(true);
+        }
+        if (!coversLoaded)
+        {
+            throw new InvalidDataException("Matched cover files did not render in the real WebView2 process.");
+        }
+
+        await webView.CoreWebView2.ExecuteScriptAsync(
+            "document.querySelector('#locateFile').click(); true");
+        var locateDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (locatedAssetId() != result.FirstId && DateTime.UtcNow < locateDeadline)
+        {
+            await Task.Delay(50).ConfigureAwait(true);
+        }
+
+        if (locatedAssetId() != result.FirstId)
+        {
+            throw new InvalidDataException("Real library locate button did not reach the trusted native locator.");
+        }
     }
 
     private sealed record InteractionResult(
@@ -159,5 +196,6 @@ internal static class WebViewInteractionSmoke
         string PageCount,
         string Hint,
         bool LocateEnabled,
+        string FirstId,
         string ModelState);
 }

@@ -25,6 +25,12 @@ public sealed class TrustedContentPolicyTests
     [InlineData("http://assetlibrary.local/index.html", false)]
     [InlineData("data:image/svg+xml;charset=utf-8,%3Csvg%3E%3C/svg%3E", true)]
     [InlineData("file:///D:/private/model.c4d", false)]
+    [InlineData("https://assetlibrary-covers.local/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", true)]
+    [InlineData("https://assetlibrary-covers.local/model.c4d", false)]
+    [InlineData("https://assetlibrary-covers.local:444/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", false)]
+    [InlineData("https://user@assetlibrary-covers.local/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", false)]
+    [InlineData("https://assetlibrary-covers.local/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa?path=D:/private", false)]
+    [InlineData("http://assetlibrary-covers.local/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", false)]
     public void OnlyMappedLocalResourcesMayLoad(string resourceUrl, bool expected)
     {
         Assert.Equal(expected, TrustedContentPolicy.IsTrustedResource(resourceUrl));
