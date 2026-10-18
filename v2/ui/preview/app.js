@@ -1,46 +1,445 @@
-(function(){
+(function () {
 'use strict';
+
 const $ = id => document.getElementById(id);
-const xss = str => String(str??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const categories = ['产品渲染','生活场景','工业设计','灯具道具','材质样本','未分类'];
-const cats = categories.slice();
-const paths = ['资产盘 / 家具','资产盘 / 产品','项目盘 / 练习素材','资产盘 / 灯具'];
-const shapes = ['立方体','几何球','机械环','展示台','桌椅组合','工作灯','玻璃瓶','工业零件','渲染场景','材质球'];
-// Every asset and image on this screen is intentionally synthetic. Never ship real user assets to a public repo.
-function syntheticCover(id){
-  const n = Number(id);const h=(n*37)%360;const shade=(h+50)%360;
-  const v=n%3;
-  const art=v===0?`<ellipse cx="135" cy="214" rx="95" ry="20" fill="#1a2a4350"/><path d="M83 116 155 75 220 111 147 157Z" fill="url(#front)"/><path d="M83 116 147 157 147 242 83 201Z" fill="url(#side)"/><path d="M147 157 220 111 220 198 147 242Z" fill="#ffffff99"/>`:v===1?`<ellipse cx="150" cy="213" rx="81" ry="20" fill="#1a2a4350"/><circle cx="150" cy="149" r="82" fill="url(#front)"/><circle cx="132" cy="123" r="53" fill="#ffffff55"/><ellipse cx="150" cy="223" rx="68" ry="11" fill="#ffffff80"/>`:`<ellipse cx="147" cy="211" rx="100" ry="18" fill="#1a2a4350"/><path d="M85 183c0-87 120-129 140-49 9 39-51 88-95 74-24-8-20-42-4-60 16-18 50-30 64-10 12 17-20 32-35 31" fill="none" stroke="url(#front)" stroke-width="34" stroke-linecap="round"/><path d="M108 232h80" stroke="#ffffffc0" stroke-width="8"/>`;
-  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="360" height="300" viewBox="0 0 300 260"><defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="hsl(${h} 35% 93%)"/><stop offset="1" stop-color="hsl(${shade} 30% 82%)"/></linearGradient><linearGradient id="front" x1="0" y1="0" x2="1" y2="1"><stop stop-color="hsl(${h} 52% 78%)"/><stop offset="1" stop-color="hsl(${h} 35% 48%)"/></linearGradient><linearGradient id="side" x1="0" y1="0" x2="1" y2="1"><stop stop-color="hsl(${shade} 36% 55%)"/><stop offset="1" stop-color="hsl(${shade} 28% 37%)"/></linearGradient></defs><rect width="300" height="260" fill="url(#bg)"/><circle cx="255" cy="38" r="48" fill="#fff" fill-opacity=".2"/>${art}<text x="12" y="246" font-family="Arial" font-size="12" fill="#526174">SYNTHETIC · ${String(n).padStart(3,'0')}</text></svg>`;
-  return 'data:image/svg+xml;charset=UTF-8,'+encodeURIComponent(svg);
+const xss = value => String(value ?? '').replace(/[&<>"']/g, character => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+}[character]));
+const icon = name => `<svg class="icon" aria-hidden="true"><use href="#i-${xss(name)}"></use></svg>`;
+const syntheticCategories = ['产品渲染', '生活场景', '工业设计', '灯具道具', '材质样本', '未分类'];
+let cats = syntheticCategories.slice();
+const paths = ['资产盘 / 家具', '资产盘 / 产品', '项目盘 / 练习素材', '资产盘 / 灯具'];
+const shapes = ['立方体', '几何球', '机械环', '展示台', '桌椅组合', '工作灯', '玻璃瓶', '工业零件', '渲染场景', '材质球'];
+
+function syntheticCover(id) {
+  const n = Number(id);
+  const h = (n * 37) % 360;
+  const shade = (h + 50) % 360;
+  const variant = n % 3;
+  const art = variant === 0
+    ? '<ellipse cx="135" cy="214" rx="95" ry="20" fill="#1a2a4350"/><path d="M83 116 155 75 220 111 147 157Z" fill="url(#front)"/><path d="M83 116 147 157 147 242 83 201Z" fill="url(#side)"/><path d="M147 157 220 111 220 198 147 242Z" fill="#ffffff99"/>'
+    : variant === 1
+      ? '<ellipse cx="150" cy="213" rx="81" ry="20" fill="#1a2a4350"/><circle cx="150" cy="149" r="82" fill="url(#front)"/><circle cx="132" cy="123" r="53" fill="#ffffff55"/><ellipse cx="150" cy="223" rx="68" ry="11" fill="#ffffff80"/>'
+      : '<ellipse cx="147" cy="211" rx="100" ry="18" fill="#1a2a4350"/><path d="M85 183c0-87 120-129 140-49 9 39-51 88-95 74-24-8-20-42-4-60 16-18 50-30 64-10 12 17-20 32-35 31" fill="none" stroke="url(#front)" stroke-width="34" stroke-linecap="round"/><path d="M108 232h80" stroke="#ffffffc0" stroke-width="8"/>';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="360" height="300" viewBox="0 0 300 260"><defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="hsl(${h} 35% 93%)"/><stop offset="1" stop-color="hsl(${shade} 30% 82%)"/></linearGradient><linearGradient id="front" x1="0" y1="0" x2="1" y2="1"><stop stop-color="hsl(${h} 52% 78%)"/><stop offset="1" stop-color="hsl(${h} 35% 48%)"/></linearGradient><linearGradient id="side" x1="0" y1="0" x2="1" y2="1"><stop stop-color="hsl(${shade} 36% 55%)"/><stop offset="1" stop-color="hsl(${shade} 28% 37%)"/></linearGradient></defs><rect width="300" height="260" fill="url(#bg)"/><circle cx="255" cy="38" r="48" fill="#fff" fill-opacity=".2"/>${art}<text x="12" y="246" font-family="Arial" font-size="12" fill="#526174">SYNTHETIC · ${String(n).padStart(3, '0')}</text></svg>`;
+  return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
 }
-const stress=Number(window.__syntheticCount||new URLSearchParams(location.search).get('synthetic'));
-const count=[100,1000].includes(stress)?stress:15;
-let items = Array.from({length:count},(_,i)=>({id:i+1,name:shapes[i%shapes.length]+' · 合成资产 '+String(i+1).padStart(3,'0'),category:cats[i%cats.length],folder:paths[i%paths.length],brand:'测试素材',tag:i%2?'练习':'展示',source:'synthetic_'+(i+1)+'.svg',ratio:[1.02,0.89,1.25,0.95][i%4],src:syntheticCover(i+1),fav:false}));
-const state={layout:'board',sort:'both',filter:'all',chip:'全部',query:'',selected:1,checked:new Set(),dark:false};
+
+function missingCover(extension) {
+  const label = xss(extension || '3D');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="720" height="520" viewBox="0 0 720 520"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#edf2f7"/><stop offset="1" stop-color="#d8e1ec"/></linearGradient></defs><rect width="720" height="520" fill="url(#g)"/><path d="m360 126 116 65v138l-116 65-116-65V191Z" fill="none" stroke="#8291a5" stroke-width="18"/><path d="m244 191 116 67 116-67M360 258v136" fill="none" stroke="#8291a5" stroke-width="14"/><text x="360" y="470" text-anchor="middle" fill="#66768b" font-family="Segoe UI, sans-serif" font-size="28">${label} · 无同名封面</text></svg>`;
+  return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+}
+
+const stress = Number(window.__syntheticCount || new URLSearchParams(location.search).get('synthetic'));
+const count = [100, 1000].includes(stress) ? stress : 15;
+let items = Array.from({ length: count }, (_, index) => ({
+  id: String(index + 1),
+  name: shapes[index % shapes.length] + ' · 合成资产 ' + String(index + 1).padStart(3, '0'),
+  category: cats[index % cats.length],
+  folder: paths[index % paths.length],
+  tag: index % 2 ? '练习' : '展示',
+  source: 'synthetic_' + (index + 1) + '.svg',
+  extension: 'SVG',
+  ratio: [1.32, 1.15, 1.42, 1.22][index % 4],
+  src: syntheticCover(index + 1),
+  fav: false,
+  hasCover: true,
+  real: false,
+}));
+
+const state = {
+  layout: 'board', filter: 'all', chip: '全部', query: '', selected: items[0]?.id ?? null,
+  checked: new Set(), dark: false,
+};
 let toastTimeout;
-function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');clearTimeout(toastTimeout);toastTimeout=setTimeout(()=>$('toast').classList.remove('show'),2500);}
-function filters(a){const q=state.query.toLocaleLowerCase().trim();const f=state.filter==='all'||state.filter==='favorite'&&a.fav||state.filter==='recent'&&a.id>Math.max(0,items.length-5)||state.filter==='unclassified'&&a.category==='未分类'||state.filter.startsWith('cat:')&&a.category===state.filter.slice(4)||state.filter.startsWith('fold:')&&a.folder===state.filter.slice(5)||state.filter.startsWith('root:')&&a.folder.startsWith(state.filter.slice(5));const c=state.chip==='全部'||a.category===state.chip||a.tag===state.chip;const s=!q||[a.name,a.category,a.folder,a.tag,a.source].some(z=>String(z).toLowerCase().includes(q));return f&&c&&s;}
-function navBtn(key,icon,label,num){return `<button data-filter="${xss(key)}" class="${state.filter===key?'active':''}"><span class="left"><span>${icon}</span><span>${xss(label)}</span></span><span class="num">${num}</span></button>`;}
-function nav(){const defs=[['all','▦','全部素材',items.length],['favorite','♡','我的收藏',items.filter(a=>a.fav).length],['recent','◷','最近添加',Math.min(5,items.length)],['unclassified','◇','未分类',items.filter(a=>a.category==='未分类').length]];$('special-nav').innerHTML=defs.map(d=>navBtn(...d)).join('');$('nav-label').textContent='虚拟分类 / 真实文件夹';$('category-nav').innerHTML=cats.map(c=>navBtn('cat:'+c,'◈',c,items.filter(a=>a.category===c).length)).join('')+'<div class="navtitle" style="padding-top:18px">素材文件夹（合成）</div>'+[...new Set(items.map(a=>a.folder.split(' / ')[0]))].map(p=>navBtn('root:'+p,'▤',p,items.filter(a=>a.folder.startsWith(p)).length)).join('');document.querySelectorAll('.nav [data-filter]').forEach(el=>el.onclick=()=>{state.filter=el.dataset.filter;state.chip='全部';render();});}
-function chips(){$('chips').innerHTML=['全部',...cats].map(c=>`<button class="chip ${state.chip===c?'active':''}" data-chip="${xss(c)}">${xss(c)}</button>`).join('');$('chips').querySelectorAll('button').forEach(el=>el.onclick=()=>{state.chip=el.dataset.chip;render();});}
-function cards(){const v=items.filter(filters);$('pageName').textContent=state.filter==='all'?'全部素材':state.filter==='favorite'?'我的收藏':state.filter==='recent'?'最近添加':state.filter==='unclassified'?'未分类':state.filter.slice(state.filter.indexOf(':')+1);$('pageCount').textContent=`${v.length} 条合成测试记录 · 未读取本机模型`;$('hintline').textContent='合成封面仅测试排版与交互。浏览器预览不支持模型拖入 C4D，也不保存任何真实文件。';$('assets').innerHTML=v.length?v.map(a=>`<article class="asset ${a.id===state.selected?'selected':''}" data-id="${a.id}" tabindex="0" style="--ar:${a.ratio}"><div class="cover"><img src="${a.src}" alt="${xss(a.name)}" loading="lazy"><span class="mark">合成封面 · 未关联模型</span><input class="multi" type="checkbox" data-check="${a.id}" ${state.checked.has(a.id)?'checked':''} aria-label="批量选择 ${xss(a.name)}"></div><div class="assetinfo"><div class="aname" title="${xss(a.name)}">${xss(a.name)}</div><div class="origin">合成数据 · SVG</div><div class="tags"><span class="tag">${xss(a.category)}</span><span class="tag">${xss(a.tag)}</span></div><div class="assetfoot"><span>◫ 无实际模型</span><button class="heart ${a.fav?'on':''}" data-fav="${a.id}" aria-label="收藏 ${xss(a.name)}">${a.fav?'♥':'♡'}</button></div></div></article>`).join(''):'<div class="empty">没有匹配的测试素材。</div>';
- $('assets').querySelectorAll('article.asset').forEach(el=>{const sel=()=>{state.selected=Number(el.dataset.id);cards();detail();};el.addEventListener('click',e=>{if(e.target.closest('button,input'))return;sel();});el.addEventListener('keydown',e=>{if(e.key==='Enter')sel();});});
- $('assets').querySelectorAll('[data-fav]').forEach(el=>el.onclick=e=>{e.stopPropagation();const a=items.find(x=>x.id===Number(el.dataset.fav));a.fav=!a.fav;render();toast('仅修改合成测试状态，不写入本机素材库');});$('assets').querySelectorAll('[data-check]').forEach(el=>el.onchange=e=>{const id=Number(el.dataset.check);if(el.checked)state.checked.add(id);else state.checked.delete(id);batch();});batch();}
-function batch(){const ids=[...state.checked];$('batchbar').style.display=ids.length?'flex':'none';if(!ids.length)return;$('batchbar').innerHTML=`<strong>已选 ${ids.length} 条</strong><span>批量分类（临时）</span><select id="batchcat">${cats.map(x=>`<option>${xss(x)}</option>`).join('')}</select><button id="batchapply">应用</button><button id="batchclear">取消</button>`;$('batchapply').onclick=()=>{const cat=$('batchcat').value;items.forEach(a=>{if(state.checked.has(a.id))a.category=cat;});state.checked.clear();render();toast('仅改变当前合成页面的分类');};$('batchclear').onclick=()=>{state.checked.clear();cards();};}
-function detail(){const a=items.find(x=>x.id===state.selected)||items[0];$('detail').innerHTML=`<div class="inspectCover"><img src="${a.src}" alt="${xss(a.name)}"></div><div class="detailName">${xss(a.name)}</div><div class="small">预览来源：程序合成 SVG</div><div class="rule"></div><div class="fieldLabel">素材文件夹（合成）</div><div class="small">${xss(a.folder)}</div><div class="rule"></div><div class="fieldLabel">虚拟分类（仅当前会话）</div><select id="setcat">${cats.map(c=>`<option ${a.category===c?'selected':''}>${xss(c)}</option>`).join('')}</select><div class="rule"></div><div class="small">模型文件：<b>未关联</b><br>Windows FileDrop：未接入</div><button class="inspectAction" id="demoC4D">⇢ C4D 拖拽等待原生宿主</button><div class="inspectNote">真实文件必须由 C# 从本地素材 ID 校验后发出，不允许从浏览器合成一条路径冒充模型。</div>`;$('setcat').onchange=e=>{a.category=e.target.value;render();toast('合成样本已分类，真实数据未修改');};$('demoC4D').onclick=()=>toast('当前只有合成封面，无对应 C4D 文件。');}
-function render(){$('app').className='app'+(state.layout==='list'?' listmode':state.layout==='board'?' boardmode':'');for(const [id,v] of [['gridBtn','grid'],['listBtn','list'],['boardBtn','board']])$(id).classList.toggle('active',state.layout===v);nav();chips();cards();detail();}
-// Trusted page <-> native bridge. Neither fake demo data nor CSS can be used as an OS path.
-const native=window.chrome?.webview;const pending=new Map();let seq=0;
-if(native){native.addEventListener('message',event=>{const x=event.data;if(!x||!pending.has(x.id))return;const p=pending.get(x.id);pending.delete(x.id);clearTimeout(p.timer);x.ok===true?p.resolve(x.data):p.reject(Error(x.error||'Windows 原生操作失败'));});$('nativeMode').textContent='检测到 Windows 原生宿主 · 等待真实数据接口';}
-function host(action,payload={}){if(!native)return Promise.reject(Error('当前只有 HTML 预览；请使用 Windows 新客户端执行本机操作。'));return new Promise((resolve,reject)=>{const id='preview-'+(++seq);const timer=setTimeout(()=>{pending.delete(id);reject(Error('原生操作超时：状态未知，请勿重复安装。'));},60000);pending.set(id,{timer,resolve,reject});native.postMessage({id,action,payload});});}
-const flow=window.NativeUpdateFlow.createUpdateFlow({callNative:action=>host(action),confirmInstall:async()=>window.confirm('是否确认安装已校验的新版本并重启桌面程序？')});
-function showUpdate(state){$('updateStatus').textContent=state.message;$('nativeUpdate').disabled=!state.canInstall;$('checkUpdate').disabled=state.status==='checking';}
-$('checkUpdate').onclick=async()=>{$('updateDialog').classList.add('open');showUpdate(await flow.check());};
-$('nativeUpdate').onclick=async()=>showUpdate(await flow.install());
-$('closeUpdate').onclick=()=>$('updateDialog').classList.remove('open');$('updateDialog').addEventListener('click',e=>{if(e.target==$('updateDialog'))$('updateDialog').classList.remove('open')});document.addEventListener('keydown',e=>{if(e.key==='Escape')$('updateDialog').classList.remove('open');});
-async function nativeOp(action,payload={}){try{const result=await host(action,payload);toast('Windows 操作完成：'+action);return result;}catch(e){toast(e.message);return null;}}
-$('pasteCover').onclick=()=>nativeOp('setCoverFromClipboard',{assetId:state.selected});$('findImage').onclick=()=>nativeOp('searchSimilarClipboard');$('showAll').onclick=()=>{state.filter='all';state.query='';state.chip='全部';$('search').value='';render();};$('locateFile').onclick=()=>nativeOp('locateAsset',{assetId:state.selected});$('importFolder').onclick=()=>nativeOp('importFolder');
-$('gridBtn').onclick=()=>{state.layout='grid';render();};$('listBtn').onclick=()=>{state.layout='list';render();};$('boardBtn').onclick=()=>{state.layout='board';render();};$('search').oninput=e=>{state.query=e.target.value;cards();};$('theme').onclick=()=>{state.dark=!state.dark;document.body.classList.toggle('dark',state.dark);$('theme').textContent=state.dark?'☼ 浅色':'☾ 深色';};$('addCategory').onclick=()=>{const name=(prompt('新增合成测试分类（当前页面有效）')||'').trim().slice(0,20);if(name&&!cats.includes(name)){cats.splice(cats.length-1,0,name);render();toast('测试分类已添加，不修改真实素材');}};
+let realMode = false;
+let librarySummary = null;
+let hostInfo = null;
+let scanning = false;
+
+function toast(message, type = 'info') {
+  $('toast').textContent = message;
+  $('toast').className = 'toast show' + (type === 'error' ? ' error' : '');
+  clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => { $('toast').className = 'toast'; }, 3200);
+}
+
+function matchesFilters(asset) {
+  const query = state.query.toLocaleLowerCase().trim();
+  const position = items.indexOf(asset);
+  const filterMatches = state.filter === 'all'
+    || (state.filter === 'favorite' && asset.fav)
+    || (state.filter === 'recent' && position >= Math.max(0, items.length - 5))
+    || (state.filter === 'unclassified' && asset.category === '未分类')
+    || (state.filter.startsWith('cat:') && asset.category === state.filter.slice(4))
+    || (state.filter.startsWith('root:') && asset.folder.startsWith(state.filter.slice(5)));
+  const chipMatches = state.chip === '全部' || asset.category === state.chip || asset.tag === state.chip;
+  const searchMatches = !query || [asset.name, asset.category, asset.folder, asset.tag, asset.source, asset.extension]
+    .some(value => String(value).toLocaleLowerCase().includes(query));
+  return filterMatches && chipMatches && searchMatches;
+}
+
+function navButton(key, iconName, label, number) {
+  const active = state.filter === key;
+  return `<button type="button" data-filter="${xss(key)}" class="${active ? 'active' : ''}" aria-pressed="${active}"><span class="left">${icon(iconName)}<span>${xss(label)}</span></span><span class="num">${number}</span></button>`;
+}
+
+function renderNavigation() {
+  const definitions = [
+    ['all', 'library', '全部素材', items.length],
+    ['recent', 'clock', '最近扫描', Math.min(5, items.length)],
+  ];
+  if (!realMode) {
+    definitions.splice(1, 0, ['favorite', 'heart', '我的收藏', items.filter(asset => asset.fav).length]);
+    definitions.push(['unclassified', 'diamond', '未分类', items.filter(asset => asset.category === '未分类').length]);
+  }
+  $('special-nav').innerHTML = definitions.map(definition => navButton(...definition)).join('');
+  $('nav-label').textContent = realMode ? '格式 / 素材文件夹' : '虚拟分类 / 素材文件夹';
+  const roots = [...new Set(items.map(asset => asset.folder.split(/[\\/]/)[0]).filter(Boolean))];
+  $('category-nav').innerHTML = cats.map(category => navButton(
+    'cat:' + category, 'layers', category, items.filter(asset => asset.category === category).length
+  )).join('') + `<div class="navtitle" style="padding-top:17px">素材文件夹${realMode ? '（只读）' : '（合成）'}</div>`
+    + roots.map(root => navButton(
+      'root:' + root, 'folder', root, items.filter(asset => asset.folder.startsWith(root)).length
+    )).join('');
+  document.querySelectorAll('.nav [data-filter]').forEach(element => {
+    element.onclick = () => {
+      state.filter = element.dataset.filter;
+      state.chip = '全部';
+      render();
+    };
+  });
+}
+
+function renderChips() {
+  $('chips').innerHTML = ['全部', ...cats].map(category => {
+    const active = state.chip === category;
+    return `<button type="button" class="chip ${active ? 'active' : ''}" data-chip="${xss(category)}" aria-pressed="${active}">${xss(category)}</button>`;
+  }).join('');
+  $('chips').querySelectorAll('button').forEach(element => {
+    element.onclick = () => {
+      state.chip = element.dataset.chip;
+      render();
+    };
+  });
+}
+
+function resetFilters() {
+  state.filter = 'all';
+  state.query = '';
+  state.chip = '全部';
+  $('search').value = '';
+  render();
+}
+
+function renderCards() {
+  const visible = items.filter(matchesFilters);
+  const focusId = visible.some(asset => asset.id === state.selected) ? state.selected : visible[0]?.id;
+  const filterTitle = state.filter === 'all' ? '全部素材'
+    : state.filter === 'favorite' ? '我的收藏'
+      : state.filter === 'recent' ? '最近扫描'
+        : state.filter === 'unclassified' ? '未分类'
+          : state.filter.slice(state.filter.indexOf(':') + 1);
+  $('pageName').textContent = filterTitle;
+  $('pageCount').textContent = realMode
+    ? `${visible.length} / ${items.length} 个真实模型 · ${librarySummary?.rootName || '本地素材库'}`
+    : `${visible.length} 条合成测试记录 · 未读取本机模型`;
+  if (realMode) {
+    const errors = Number(librarySummary?.errorCount || 0);
+    $('hintline').innerHTML = `${icon('info')}<span><b>真实素材只读索引：</b>${xss(librarySummary?.root || '')} · ${items.length} 个模型 · ${errors ? `${errors} 个目录无法读取` : '扫描完成'}。C4D 拖入尚未完成。</span>`;
+  } else {
+    $('hintline').innerHTML = `${icon('info')}<span>当前仅用于验证界面与交互；<b>未连接真实素材库，C4D 拖入尚未完成。</b></span>`;
+  }
+
+  const emptyMessage = realMode && items.length === 0
+    ? '<div class="empty"><strong>没有扫描到支持的模型</strong><span>当前只读扫描 .c4d、.fbx 和 .obj。可以重新选择其他素材文件夹。</span></div>'
+    : '<div class="empty"><strong>没有找到匹配素材</strong><span>可以清除搜索和分类筛选后重新查看。</span><button type="button" class="toolbtn" id="clearFiltersEmpty">' + icon('refresh') + '清除筛选</button></div>';
+  $('assets').innerHTML = visible.length ? visible.map(asset => {
+    const syntheticControls = realMode ? '' : `<input class="multi" type="checkbox" data-check="${xss(asset.id)}" ${state.checked.has(asset.id) ? 'checked' : ''} aria-label="批量选择 ${xss(asset.name)}">`;
+    const favorite = realMode ? '' : `<button type="button" class="heart ${asset.fav ? 'on' : ''}" data-fav="${xss(asset.id)}" aria-label="${asset.fav ? '取消收藏' : '收藏'} ${xss(asset.name)}" aria-pressed="${asset.fav}">${icon('heart')}</button>`;
+    return `<article role="listitem" aria-current="${asset.id === state.selected}" class="asset ${asset.id === state.selected ? 'selected' : ''}" data-id="${xss(asset.id)}" tabindex="${asset.id === focusId ? '0' : '-1'}" style="--ar:${asset.ratio}"><div class="cover"><img src="${xss(asset.src)}" alt="${xss(asset.name)}" loading="lazy"><span class="mark">${realMode ? (asset.hasCover ? '同名真实封面' : '无同名封面') : '合成封面 · 未关联模型'}</span>${syntheticControls}</div><div class="assetinfo"><div class="aname" title="${xss(asset.name)}">${xss(asset.name)}</div><div class="origin">${realMode ? `${xss(asset.extension)} · ${xss(asset.folder)}` : '合成数据 · SVG'}</div><div class="tags"><span class="tag">${xss(asset.category)}</span><span class="tag">${xss(asset.tag)}</span></div><div class="assetfoot"><span class="model-state">${icon('box')}${realMode ? '原模型只读' : '无实际模型'}</span>${favorite}</div></div></article>`;
+  }).join('') : emptyMessage;
+
+  const cardElements = [...$('assets').querySelectorAll('article.asset')];
+  cardElements.forEach((element, index) => {
+    const select = () => {
+      state.selected = element.dataset.id;
+      renderCards();
+      renderDetail();
+      updateCapabilityControls();
+    };
+    element.addEventListener('click', event => {
+      if (!event.target.closest('button,input')) select();
+    });
+    element.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        select();
+        return;
+      }
+      const moves = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1, Home: -index, End: cardElements.length - 1 - index };
+      if (!(event.key in moves)) return;
+      event.preventDefault();
+      const next = cardElements[Math.max(0, Math.min(cardElements.length - 1, index + moves[event.key]))];
+      cardElements.forEach(card => { card.tabIndex = card === next ? 0 : -1; });
+      next.focus();
+    });
+  });
+  $('assets').querySelectorAll('[data-fav]').forEach(element => {
+    element.onclick = event => {
+      event.stopPropagation();
+      const asset = items.find(item => item.id === element.dataset.fav);
+      asset.fav = !asset.fav;
+      render();
+      toast('仅修改合成测试状态，不写入本机素材库');
+    };
+  });
+  $('assets').querySelectorAll('[data-check]').forEach(element => {
+    element.onchange = () => {
+      const id = element.dataset.check;
+      if (element.checked) state.checked.add(id); else state.checked.delete(id);
+      renderBatch();
+    };
+  });
+  const clear = $('clearFiltersEmpty');
+  if (clear) clear.onclick = resetFilters;
+  renderBatch();
+}
+
+function renderBatch() {
+  const ids = [...state.checked];
+  $('batchbar').style.display = !realMode && ids.length ? 'flex' : 'none';
+  if (realMode || !ids.length) return;
+  $('batchbar').innerHTML = `<strong>已选 ${ids.length} 条</strong><span>批量分类（临时）</span><select id="batchcat">${cats.map(category => `<option>${xss(category)}</option>`).join('')}</select><button id="batchapply">应用</button><button id="batchclear">取消</button>`;
+  $('batchapply').onclick = () => {
+    const category = $('batchcat').value;
+    items.forEach(asset => { if (state.checked.has(asset.id)) asset.category = category; });
+    state.checked.clear();
+    render();
+    toast('仅改变当前合成页面的分类');
+  };
+  $('batchclear').onclick = () => { state.checked.clear(); renderCards(); };
+}
+
+function formatBytes(bytes) {
+  const value = Number(bytes || 0);
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function renderDetail() {
+  const asset = items.find(item => item.id === state.selected) || items[0];
+  if (!asset) {
+    $('detail').innerHTML = '<div class="empty"><strong>暂无素材</strong><span>点击“导入素材文件夹”选择一个真实素材根目录。</span></div>';
+    return;
+  }
+  if (realMode) {
+    const modified = asset.modifiedUtc ? new Date(asset.modifiedUtc).toLocaleString() : '未知';
+    $('detail').innerHTML = `<div class="inspectCover"><img src="${xss(asset.src)}" alt="${xss(asset.name)}"></div><div class="detailName">${xss(asset.name)}</div><div class="small">${asset.hasCover ? '同目录同名真实封面' : '没有找到同目录同名封面'}</div><div class="rule"></div><div class="fieldLabel">原文件（只读）</div><div class="small">${xss(asset.relativePath)}</div><div class="rule"></div><div class="small">格式：<b>${xss(asset.extension)}</b><br>大小：${xss(formatBytes(asset.sizeBytes))}<br>修改时间：${xss(modified)}</div><div class="rule"></div><button type="button" class="toolbtn primary" id="detailLocate">${icon('locate')}在资源管理器中定位</button><div class="unavailable-callout">${icon('info')}<span><b>C4D 拖入尚未接入</b><br>Issue #15 仍待实机验证。</span></div><div class="inspectNote">定位操作只向 C# 发送素材 ID，网页不能提交任意文件路径。</div>`;
+    $('detailLocate').onclick = locateSelected;
+    return;
+  }
+  $('detail').innerHTML = `<div class="inspectCover"><img src="${xss(asset.src)}" alt="${xss(asset.name)}"></div><div class="detailName">${xss(asset.name)}</div><div class="small">预览来源：程序合成 SVG</div><div class="rule"></div><div class="fieldLabel">素材文件夹（合成）</div><div class="small">${xss(asset.folder)}</div><div class="rule"></div><div class="fieldLabel">虚拟分类（仅当前会话）</div><select id="setcat" aria-label="虚拟分类">${cats.map(category => `<option ${asset.category === category ? 'selected' : ''}>${xss(category)}</option>`).join('')}</select><div class="rule"></div><div class="small">模型文件：<b>未关联</b></div><div class="unavailable-callout">${icon('info')}<span><b>C4D 拖入尚未接入</b><br>Issue #15 仍待实机验证。</span></div><div class="inspectNote">真实文件必须由 C# 从本地素材 ID 校验后发出，网页不会合成路径冒充模型。</div>`;
+  $('setcat').onchange = event => {
+    asset.category = event.target.value;
+    render();
+    toast('合成样本已分类，真实数据未修改');
+  };
+}
+
+function render() {
+  $('app').className = 'app ' + (state.layout === 'list' ? 'listmode' : state.layout === 'board' ? 'boardmode' : 'gridmode');
+  for (const [id, value] of [['gridBtn', 'grid'], ['listBtn', 'list'], ['boardBtn', 'board']]) {
+    const active = state.layout === value;
+    $(id).classList.toggle('active', active);
+    $(id).setAttribute('aria-pressed', String(active));
+  }
+  renderNavigation();
+  renderChips();
+  renderCards();
+  renderDetail();
+  updateCapabilityControls();
+}
+
+const nativeHost = window.assetLibraryHost;
+const capabilityControls = {
+  pasteCover: 'setCoverFromClipboard',
+  findImage: 'searchSimilarClipboard',
+  locateFile: 'locateAsset',
+  importFolder: 'importFolder',
+  checkUpdate: 'checkForUpdates',
+};
+
+function setNativeStatus(stateName, message) {
+  const mode = $('nativeMode');
+  mode.dataset.state = stateName;
+  const text = mode.querySelector('.mode-text');
+  if (text) text.textContent = message; else mode.textContent = message;
+}
+
+function updateCapabilityControls() {
+  const capabilities = new Set(Array.isArray(hostInfo?.capabilities) ? hostInfo.capabilities : []);
+  for (const [id, capability] of Object.entries(capabilityControls)) {
+    const control = $(id);
+    let enabled = capabilities.has(capability);
+    if (id === 'checkUpdate') enabled = enabled && capabilities.has('installUpdate');
+    if (id === 'locateFile') enabled = enabled && realMode && Boolean(state.selected);
+    if (id === 'importFolder') enabled = enabled && !scanning;
+    control.disabled = !enabled;
+    control.title = enabled ? '' : id === 'checkUpdate' ? '更新服务尚未接入' : id === 'locateFile' ? '请先选择真实素材' : '该本地能力尚未接入';
+  }
+}
+
+function applyCapabilities(info) {
+  hostInfo = info;
+  updateCapabilityControls();
+  const capabilities = new Set(Array.isArray(info?.capabilities) ? info.capabilities : []);
+  const realCount = [...capabilities].filter(value => value !== 'getHostInfo').length;
+  setNativeStatus(realCount ? 'connected' : 'limited', realCount
+    ? `Windows 客户端已连接 · ${realCount} 项本地能力可用`
+    : 'Windows 客户端已连接 · 未连接真实素材库');
+}
+
+async function connectNativeHost() {
+  if (!nativeHost) {
+    setNativeStatus('offline', '合成数据 · 未连接真实素材库');
+    return;
+  }
+  setNativeStatus('connecting', '正在连接 Windows 客户端…');
+  try {
+    applyCapabilities(await nativeHost.request('getHostInfo', {}));
+  } catch (error) {
+    setNativeStatus('error', `Windows 客户端连接失败：${error.message}`);
+  }
+}
+
+function host(action, payload = {}) {
+  if (!nativeHost) return Promise.reject(Error('当前是 HTML 预览，或尚未连接支持此功能的 Windows 原生服务。'));
+  return nativeHost.request(action, payload);
+}
+
+const flow = window.NativeUpdateFlow.createUpdateFlow({
+  callNative: action => host(action),
+  confirmInstall: async () => window.confirm('是否确认安装已校验的新版本并重启桌面程序？'),
+});
+
+function showUpdate(updateState) {
+  $('updateStatus').textContent = updateState.message;
+  $('nativeUpdate').disabled = !updateState.canInstall;
+  $('checkUpdate').disabled = updateState.status === 'checking';
+}
+
+$('checkUpdate').onclick = async () => {
+  $('updateDialog').classList.add('open');
+  showUpdate(await flow.check());
+};
+$('nativeUpdate').onclick = async () => showUpdate(await flow.install());
+$('closeUpdate').onclick = () => $('updateDialog').classList.remove('open');
+$('updateDialog').addEventListener('click', event => {
+  if (event.target === $('updateDialog')) $('updateDialog').classList.remove('open');
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') $('updateDialog').classList.remove('open');
+});
+
+async function nativeOperation(action, payload = {}) {
+  try {
+    return await host(action, payload);
+  } catch (error) {
+    toast(error.message, 'error');
+    return null;
+  }
+}
+
+function applyRealCatalog(catalog) {
+  realMode = true;
+  librarySummary = catalog;
+  cats = [...new Set(catalog.assets.map(asset => asset.extension))].sort();
+  items = catalog.assets.map(asset => ({
+    ...asset,
+    id: String(asset.id),
+    category: asset.extension,
+    tag: asset.hasCover ? '有封面' : '缺封面',
+    source: asset.fileName,
+    ratio: 1.34,
+    src: asset.hasCover ? `https://assetlibrary-covers.local/${encodeURIComponent(asset.id)}` : missingCover(asset.extension),
+    fav: false,
+    real: true,
+  }));
+  state.filter = 'all';
+  state.chip = '全部';
+  state.query = '';
+  state.selected = items[0]?.id ?? null;
+  state.checked.clear();
+  $('search').value = '';
+  $('assets').setAttribute('aria-label', '真实素材');
+  const navFoot = $('navFoot');
+  if (navFoot) navFoot.innerHTML = `只读扫描：${xss(catalog.rootName)}<br>不会移动、重命名或修改原文件。`;
+  render();
+}
+
+async function importFolder() {
+  if (scanning) return;
+  scanning = true;
+  updateCapabilityControls();
+  setNativeStatus('connecting', '请选择素材文件夹；确认后开始只读扫描…');
+  $('hintline').innerHTML = `${icon('info')}<span><b>等待选择并扫描素材文件夹…</b> 原文件不会被修改。</span>`;
+  const result = await nativeOperation('importFolder');
+  scanning = false;
+  updateCapabilityControls();
+  if (!result) {
+    setNativeStatus('error', '素材扫描失败；请检查磁盘连接和读取权限');
+    return;
+  }
+  if (result.cancelled) {
+    setNativeStatus('connected', realMode ? '已保留当前真实素材库' : '已取消选择 · 仍显示合成数据');
+    render();
+    return;
+  }
+  applyRealCatalog(result.catalog);
+  setNativeStatus('connected', `真实素材库已连接 · ${items.length} 个模型`);
+  toast(`只读扫描完成：${items.length} 个模型`);
+}
+
+async function locateSelected() {
+  if (!realMode || !state.selected) {
+    toast('请先选择真实素材文件夹和素材卡片', 'error');
+    return;
+  }
+  const result = await nativeOperation('locateAsset', { assetId: state.selected });
+  if (result?.located) toast('已在资源管理器中定位原文件');
+}
+
+window.addEventListener('assetlibrary:scanProgress', event => {
+  if (!scanning) return;
+  const progress = event.detail || {};
+  const directories = Number(progress.directoryCount || 0);
+  const assets = Number(progress.assetCount || 0);
+  const errors = Number(progress.errorCount || 0);
+  const folder = String(progress.currentFolder || '.');
+  setNativeStatus('connecting', `正在只读扫描 · ${assets} 个模型 · ${directories} 个文件夹`);
+  $('hintline').innerHTML = `${icon('info')}<span><b>扫描进行中：</b>${assets} 个模型 · ${directories} 个文件夹 · ${errors} 个读取错误<br><span class="small">${xss(folder)}</span></span>`;
+});
+
+$('pasteCover').onclick = () => nativeOperation('setCoverFromClipboard', { assetId: state.selected });
+$('findImage').onclick = () => nativeOperation('searchSimilarClipboard');
+$('showAll').onclick = resetFilters;
+$('locateFile').onclick = locateSelected;
+$('importFolder').onclick = importFolder;
+$('gridBtn').onclick = () => { state.layout = 'grid'; render(); };
+$('listBtn').onclick = () => { state.layout = 'list'; render(); };
+$('boardBtn').onclick = () => { state.layout = 'board'; render(); };
+$('search').oninput = event => { state.query = event.target.value; renderCards(); renderDetail(); };
+$('theme').onclick = () => {
+  state.dark = !state.dark;
+  document.body.classList.toggle('dark', state.dark);
+  $('theme').setAttribute('aria-pressed', String(state.dark));
+  $('theme').querySelector('use').setAttribute('href', state.dark ? '#i-sun' : '#i-moon');
+  $('theme').querySelector('.button-label').textContent = state.dark ? '浅色' : '深色';
+};
+
 render();
+connectNativeHost();
 })();
