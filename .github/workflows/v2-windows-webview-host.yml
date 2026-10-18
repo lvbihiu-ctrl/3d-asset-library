@@ -157,6 +157,7 @@ jobs:
 
       - name: Validate screenshot dimensions and before/after evidence
         if: github.event_name == 'pull_request'
+        working-directory: .
         run: >-
           python v2/ci/verify_ui_evidence.py
           --before "$env:RUNNER_TEMP\v2-host\screenshots\before"
