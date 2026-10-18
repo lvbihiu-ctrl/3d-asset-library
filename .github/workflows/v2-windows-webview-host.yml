@@ -5,7 +5,9 @@ on:
     branches: [v2-dev]
     paths:
       - "v2/windows/**"
-      - "app/素材工作台.html"
+      - "v2/ui/desktop/**"
+      - "v2/ui/preview/app.js"
+      - "v2/ui/update/bridge.js"
       - ".github/workflows/v2-windows-webview-host.yml"
   workflow_dispatch:
 
@@ -30,6 +32,29 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Playwright test package
+        working-directory: .
+        run: python -m pip install playwright==1.55.0 Pillow==11.3.0
+
+      - name: Test desktop and shared UI interactions
+        working-directory: .
+        run: |
+          New-Item "$env:RUNNER_TEMP\TestResults" -ItemType Directory -Force | Out-Null
+          $env:CHROMIUM_BIN = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
+          if (!(Test-Path $env:CHROMIUM_BIN)) {
+            throw "Microsoft Edge was not found at $env:CHROMIUM_BIN"
+          }
+          python -m unittest v2.ui.desktop.test_desktop v2.ui.desktop.test_clipboard v2.ui.preview.test_preview -v `
+            2>&1 | Tee-Object "$env:RUNNER_TEMP\TestResults\ui-tests.txt"
+          if ($LASTEXITCODE -ne 0) {
+            throw "UI interaction tests failed with exit code $LASTEXITCODE."
+          }
 
       - name: Restore
         run: dotnet restore AssetLibrary.V2.sln
@@ -60,23 +85,131 @@ jobs:
         run: |
           $exe = "$env:RUNNER_TEMP\v2-host\win-x64\AssetLibrary.V2.exe"
           $userData = "$env:RUNNER_TEMP\v2-host\webview2-user-data"
-          $screenshots = "$env:RUNNER_TEMP\v2-host\screenshots"
+          $screenshots = "$env:RUNNER_TEMP\v2-host\screenshots\after"
+          $captureOut = "$env:RUNNER_TEMP\TestResults\capture-stdout.txt"
+          $captureErr = "$env:RUNNER_TEMP\TestResults\capture-stderr.txt"
           $smoke = Start-Process -FilePath $exe -ArgumentList @(
             '--smoke-test', '--user-data-dir', $userData
           ) -WindowStyle Hidden -Wait -PassThru
           if ($smoke.ExitCode -ne 0) {
             throw "WebView2 smoke test failed with exit code $($smoke.ExitCode)."
           }
+          $interaction = Start-Process -FilePath $exe -ArgumentList @(
+            '--ui-interaction-test', '--user-data-dir', $userData
+          ) -WindowStyle Hidden -Wait -PassThru
+          if ($interaction.ExitCode -ne 0) {
+            throw "WebView2 interaction test failed with exit code $($interaction.ExitCode)."
+          }
           $capture = Start-Process -FilePath $exe -ArgumentList @(
             '--capture-directory', $screenshots,
             '--user-data-dir', $userData
-          ) -WindowStyle Hidden -Wait -PassThru
+          ) -WindowStyle Hidden -RedirectStandardOutput $captureOut `
+            -RedirectStandardError $captureErr -Wait -PassThru
+          Get-Content $captureOut -ErrorAction SilentlyContinue
+          Get-Content $captureErr -ErrorAction SilentlyContinue
           if ($capture.ExitCode -ne 0) {
             throw "WebView2 screenshot run failed with exit code $($capture.ExitCode)."
           }
           Get-ChildItem $screenshots -Filter *.png | ForEach-Object {
             Write-Host "$($_.Name) $($_.Length) bytes"
           }
+
+      - name: Verify real read-only library flow with 100 and 1000 records
+        run: |
+          $exe = "$env:RUNNER_TEMP\v2-host\win-x64\AssetLibrary.V2.exe"
+          foreach ($count in @(100, 1000)) {
+            $testRoot = "$env:RUNNER_TEMP\v2-real-library-$count"
+            $userData = "$env:RUNNER_TEMP\v2-host\real-library-webview2-$count"
+            $testOut = "$env:RUNNER_TEMP\TestResults\real-library-$count-stdout.txt"
+            $testErr = "$env:RUNNER_TEMP\TestResults\real-library-$count-stderr.txt"
+            New-Item $testRoot -ItemType Directory -Force | Out-Null
+            1..$count | ForEach-Object {
+              [IO.File]::WriteAllText(
+                (Join-Path $testRoot ("asset-{0:D4}.obj" -f $_)),
+                "synthetic test record $_")
+            }
+            [IO.File]::WriteAllBytes(
+              (Join-Path $testRoot 'asset-0001.png'),
+              [Convert]::FromBase64String('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='))
+            $before = @{}
+            Get-ChildItem $testRoot -File -Recurse | ForEach-Object {
+              $before[$_.FullName] = (Get-FileHash $_.FullName -Algorithm SHA256).Hash
+            }
+            $realArguments = @(
+              '--library-test-root', $testRoot,
+              '--user-data-dir', $userData
+            )
+            if ($count -eq 100) {
+              $realArguments += @('--capture-directory', "$env:RUNNER_TEMP\v2-host\screenshots\real-library")
+            }
+            $real = Start-Process -FilePath $exe -ArgumentList $realArguments -WindowStyle Hidden -RedirectStandardOutput $testOut `
+              -RedirectStandardError $testErr -Wait -PassThru
+            Get-Content $testOut -ErrorAction SilentlyContinue
+            Get-Content $testErr -ErrorAction SilentlyContinue
+            if ($real.ExitCode -ne 0) {
+              throw "Real library WebView2 $count-record test failed with exit code $($real.ExitCode)."
+            }
+            $after = @{}
+            Get-ChildItem $testRoot -File -Recurse | ForEach-Object {
+              $after[$_.FullName] = (Get-FileHash $_.FullName -Algorithm SHA256).Hash
+            }
+            $changed = @($before.Keys | Where-Object {
+              !$after.ContainsKey($_) -or $after[$_] -ne $before[$_]
+            })
+            $added = @($after.Keys | Where-Object { !$before.ContainsKey($_) })
+            if ($changed.Count -ne 0 -or $added.Count -ne 0) {
+              throw "Read-only $count-record scan changed $($changed.Count) files and added $($added.Count) files."
+            }
+          }
+
+      - name: Capture v2-dev UI before/after comparison
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        working-directory: .
+        run: |
+          $source = "$env:RUNNER_TEMP\v2-baseline-source"
+          $publish = "$env:RUNNER_TEMP\v2-baseline-publish"
+          $screenshots = "$env:RUNNER_TEMP\v2-host\screenshots\before"
+          $userData = "$env:RUNNER_TEMP\v2-baseline-user-data"
+          $baselineOut = "$env:RUNNER_TEMP\TestResults\baseline-capture-stdout.txt"
+          $baselineErr = "$env:RUNNER_TEMP\TestResults\baseline-capture-stderr.txt"
+          git worktree add --detach $source $env:BASE_SHA
+          try {
+            # Keep the base UI unchanged but use the head's off-screen capture
+            # harness so both sides are measured at the same exact pixels.
+            Copy-Item "v2\windows\AssetLibrary.Desktop\ScreenshotCapture.cs" `
+              "$source\v2\windows\AssetLibrary.Desktop\ScreenshotCapture.cs" -Force
+            Copy-Item "v2\windows\AssetLibrary.Desktop\PngDimensions.cs" `
+              "$source\v2\windows\AssetLibrary.Desktop\PngDimensions.cs" -Force
+            dotnet restore "$source\v2\windows\AssetLibrary.Desktop\AssetLibrary.Desktop.csproj" --runtime win-x64
+            dotnet publish "$source\v2\windows\AssetLibrary.Desktop\AssetLibrary.Desktop.csproj" `
+              --configuration Release --runtime win-x64 --self-contained true `
+              --no-restore --output $publish
+            $env:ASSET_LIBRARY_CAPTURE_LIGHT_ONLY = '1'
+            $baseline = Start-Process -FilePath "$publish\AssetLibrary.V2.exe" -ArgumentList @(
+              '--capture-directory', $screenshots,
+              '--user-data-dir', $userData
+            ) -WindowStyle Hidden -RedirectStandardOutput $baselineOut `
+              -RedirectStandardError $baselineErr -Wait -PassThru
+            Remove-Item Env:ASSET_LIBRARY_CAPTURE_LIGHT_ONLY
+            Get-Content $baselineOut -ErrorAction SilentlyContinue
+            Get-Content $baselineErr -ErrorAction SilentlyContinue
+            if ($baseline.ExitCode -ne 0) {
+              throw "Baseline WebView2 screenshot run failed with exit code $($baseline.ExitCode)."
+            }
+          }
+          finally {
+            git worktree remove --force $source
+          }
+
+      - name: Validate screenshot dimensions and before/after evidence
+        if: github.event_name == 'pull_request'
+        working-directory: .
+        run: >-
+          python v2/ci/verify_ui_evidence.py
+          --before "$env:RUNNER_TEMP\v2-host\screenshots\before"
+          --after "$env:RUNNER_TEMP\v2-host\screenshots\after"
 
       - name: Confirm stable v0.1.7 release files are untouched
         if: github.event_name == 'pull_request'
@@ -92,14 +225,20 @@ jobs:
         run: |
           Compress-Archive `
             -Path "$env:RUNNER_TEMP\v2-host\win-x64\*" `
-            -DestinationPath "$env:RUNNER_TEMP\3D-Asset-Library-V2-Issue14-win-x64.zip"
+            -DestinationPath "$env:RUNNER_TEMP\3D-Asset-Library-V2-Issue33-win-x64.zip"
 
       - name: Upload Windows client and evidence
         uses: actions/upload-artifact@v4
         with:
-          name: 3D-Asset-Library-V2-Issue14-win-x64
+          name: 3D-Asset-Library-V2-Issue33-win-x64
           if-no-files-found: error
           path: |
-            ${{ runner.temp }}\3D-Asset-Library-V2-Issue14-win-x64.zip
-            ${{ runner.temp }}\v2-host\screenshots\*.png
+            ${{ runner.temp }}\3D-Asset-Library-V2-Issue33-win-x64.zip
+            ${{ runner.temp }}\v2-host\screenshots\after\*.png
+            ${{ runner.temp }}\v2-host\screenshots\before\*.png
+            ${{ runner.temp }}\v2-host\screenshots\real-library\*.png
             ${{ runner.temp }}\TestResults\*.trx
+            ${{ runner.temp }}\TestResults\ui-tests.txt
+            ${{ runner.temp }}\TestResults\capture-*.txt
+            ${{ runner.temp }}\TestResults\real-library-*.txt
+            ${{ runner.temp }}\TestResults\baseline-capture-*.txt

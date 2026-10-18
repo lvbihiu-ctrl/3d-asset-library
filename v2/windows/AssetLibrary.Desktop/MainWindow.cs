@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using AssetLibrary.Desktop.Bridge;
+using AssetLibrary.Desktop.Library;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
@@ -16,12 +17,34 @@ internal sealed class MainWindow : Form
     private readonly HostOptions _options;
     private readonly WebView2 _webView = new() { Dock = DockStyle.Fill };
     private readonly HostMessageDispatcher _dispatcher;
+    private readonly LibraryScanner _libraryScanner = new();
+    private readonly LibrarySession _librarySession = new();
+    private readonly LocalLibraryStore _store;
+    private readonly ImageSimilarity _imageSearch = new();
+    private readonly SemaphoreSlim _libraryWork = new(1, 1);
+    private string? _lastAutomatedLocatedAssetId;
+    private bool _dragging;
 
     public MainWindow(HostOptions options)
     {
         _options = options;
-        _dispatcher = new HostMessageDispatcher(CreateHostInfo);
-        Text = "3D 素材管理器 · V2 Windows 预览";
+        var dataDirectory = options.DataDirectory ?? (options.IsAutomated
+            ? Path.Combine(options.UserDataDirectory ?? throw new ArgumentException("自动测试必须指定 --user-data-dir 或 --data-dir。"), "test-library")
+            : @"D:\Codex\3D-Asset-Library-V2-Data");
+        _store = new LocalLibraryStore(dataDirectory);
+        var catalog = _store.Load();
+        if (catalog is null && (options.LegacyDataDirectory is not null || !options.IsAutomated))
+            catalog = _store.ImportLegacy(options.LegacyDataDirectory ?? @"D:\Codex\3D-Asset-Library-Ready\.local-data");
+        if (catalog is not null) _librarySession.Replace(catalog);
+        _dispatcher = new HostMessageDispatcher(
+            CreateHostInfo,
+            ImportLibraryAsync,
+            LocateAsset,
+            () => _librarySession.Catalog,
+            SetCoverFromClipboardAsync,
+            SearchSimilarClipboardAsync,
+            BeginAssetDragAsync);
+        Text = "3D 素材管理器 V2";
         ClientSize = new Size(1016, 689);
         MinimumSize = new Size(820, 600);
         StartPosition = FormStartPosition.CenterScreen;
@@ -31,12 +54,67 @@ internal sealed class MainWindow : Form
 
     public int ExitCode { get; private set; }
 
+    private async Task<bool> BeginAssetDragAsync(string assetId)
+    {
+        // Leave WebView2's message callback before entering OLE's nested message loop.
+        await Task.Yield();
+        if (IsDisposed || Disposing) return false;
+        if (_dragging || _libraryWork.CurrentCount == 0)
+            throw new InvalidOperationException("请等待当前素材操作结束后再拖出。");
+        if ((MouseButtons & MouseButtons.Left) == 0)
+            throw new InvalidOperationException("请按住素材卡片并拖向 C4D 窗口。");
+        var payload = AssetFileDrag.CreatePayload(_librarySession, assetId);
+        _dragging = true;
+        try
+        {
+            // Windows supplies the physical Shift state to the receiving application's OLE handler.
+            return _webView.DoDragDrop(payload, DragDropEffects.Copy) != DragDropEffects.None;
+        }
+        finally { _dragging = false; }
+    }
+
     private async void OnShown(object? sender, EventArgs eventArgs)
     {
         Shown -= OnShown;
         try
         {
             await InitializeWebViewAsync();
+            if (_options.CoverFeatureTest)
+            {
+                await ClipboardFeatureSmoke.VerifyAsync(_webView, _librarySession, _store, _options.LibraryTestRoot!);
+                if (_options.CaptureDirectory is not null)
+                    await ScreenshotCapture.CaptureRequiredAsync(_webView, this, _options.CaptureDirectory);
+                Close();
+                return;
+            }
+            if (_options.LibraryTestRoot is not null)
+            {
+                await WebViewInteractionSmoke.VerifyRealLibraryAsync(
+                    _webView,
+                    () => _librarySession.Count,
+                    () => _lastAutomatedLocatedAssetId);
+                Console.WriteLine("REAL LIBRARY PASS: 真实目录只读扫描、卡片、搜索和定位入口已在 WebView2 中验证。");
+                if (_options.CaptureDirectory is not null)
+                {
+                    await ScreenshotCapture.CaptureRequiredAsync(
+                        _webView,
+                        this,
+                        _options.CaptureDirectory);
+                }
+
+                Close();
+                return;
+            }
+
+            if (_options.UiInteractionTest)
+            {
+                await WebViewInteractionSmoke.VerifyAsync(_webView);
+                await WebViewInteractionSmoke.VerifyCardZoomAsync(_webView);
+                Console.WriteLine("UI INTERACTION PASS: 搜索、分类、主题、布局、卡片选择和滚动均已在 WebView2 中验证。");
+                Close();
+                return;
+            }
+
             if (_options.CaptureDirectory is not null)
             {
                 await ScreenshotCapture.CaptureRequiredAsync(
@@ -80,12 +158,7 @@ internal sealed class MainWindow : Form
             }
         }
 
-        var userDataDirectory = _options.UserDataDirectory
-            ?? Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "3DAssetLibrary",
-                "V2Preview",
-                "WebView2");
+        var userDataDirectory = _options.UserDataDirectory ?? @"D:\Codex\3D-Asset-Library-V2-Data\WebView2";
         Directory.CreateDirectory(userDataDirectory);
 
         var environment = await CoreWebView2Environment.CreateAsync(userDataFolder: userDataDirectory);
@@ -96,6 +169,8 @@ internal sealed class MainWindow : Form
         core.Settings.AreDevToolsEnabled = false;
         core.Settings.AreDefaultContextMenusEnabled = false;
         core.Settings.IsStatusBarEnabled = false;
+        // Ctrl+wheel belongs to the material wall, not browser-wide page zoom.
+        core.Settings.IsZoomControlEnabled = false;
         core.Settings.AreDefaultScriptDialogsEnabled = false;
         core.SetVirtualHostNameToFolderMapping(
             TrustedContentPolicy.VirtualHostName,
@@ -116,6 +191,11 @@ internal sealed class MainWindow : Form
         core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
         core.WebResourceRequested += (_, args) =>
         {
+            if (TryServeCover(core, args))
+            {
+                return;
+            }
+
             if (!TrustedContentPolicy.IsTrustedResource(args.Request.Uri))
             {
                 args.Response = core.Environment.CreateWebResourceResponse(
@@ -152,7 +232,7 @@ internal sealed class MainWindow : Form
         Debug.WriteLine($"WebView2 Runtime: {runtimeVersion}");
     }
 
-    private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs args)
+    private async void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs args)
     {
         if (!TrustedContentPolicy.IsTrustedMessageSource(args.Source))
         {
@@ -171,8 +251,187 @@ internal sealed class MainWindow : Form
             return;
         }
 
-        _webView.CoreWebView2.PostWebMessageAsJson(_dispatcher.Dispatch(rawMessage));
+        var response = await _dispatcher.DispatchAsync(rawMessage);
+        if (!_webView.IsDisposed && _webView.CoreWebView2 is not null)
+        {
+            _webView.CoreWebView2.PostWebMessageAsJson(response);
+        }
     }
+
+    private async Task<ImportLibraryResult> ImportLibraryAsync()
+    {
+        await _libraryWork.WaitAsync();
+        try { return await ImportLibraryCoreAsync(); }
+        finally { _libraryWork.Release(); }
+    }
+
+    private async Task<ImportLibraryResult> ImportLibraryCoreAsync()
+    {
+        var progress = new Progress<LibraryScanProgress>(ReportScanProgress);
+        if (_options.LibraryTestRoot is not null)
+        {
+            var automatedCatalog = await Task.Run(() => _libraryScanner.Scan(
+                _options.LibraryTestRoot,
+                progress: progress));
+            automatedCatalog = _store.SaveCatalog(automatedCatalog);
+            _librarySession.Replace(automatedCatalog);
+            return new ImportLibraryResult(false, automatedCatalog);
+        }
+
+        using var dialog = new FolderBrowserDialog
+        {
+            Description = "选择一个素材根目录（只读扫描 C4D / FBX / OBJ）",
+            ShowNewFolderButton = false,
+            UseDescriptionForTitle = true,
+        };
+
+        if (dialog.ShowDialog(this) != DialogResult.OK || string.IsNullOrWhiteSpace(dialog.SelectedPath))
+        {
+            return new ImportLibraryResult(true, null);
+        }
+
+        var selectedPath = Path.GetFullPath(dialog.SelectedPath);
+        var catalog = await Task.Run(() => _libraryScanner.Scan(selectedPath, progress: progress));
+        catalog = _store.SaveCatalog(catalog);
+        _librarySession.Replace(catalog);
+        return new ImportLibraryResult(false, catalog);
+    }
+
+    private async Task<LibraryAsset> SetCoverFromClipboardAsync(string assetId)
+    {
+        await _libraryWork.WaitAsync();
+        try
+        {
+            if (!_librarySession.TryGetAsset(assetId, out var asset) || asset is null)
+                throw new InvalidOperationException("请先选择一条真实素材。");
+            using var image = await GetClipboardImageAsync();
+            var updated = _store.SaveCover(asset, image);
+            var catalog = _librarySession.Catalog!;
+            _librarySession.Replace(catalog with { Assets = catalog.Assets.Select(item => item.Id == assetId ? updated : item).ToArray() });
+            // The atomic cover map is authoritative, even if a later catalog save cannot complete.
+            return updated;
+        }
+        finally { _libraryWork.Release(); }
+    }
+
+    private async Task<ImageSearchResult> SearchSimilarClipboardAsync()
+    {
+        await _libraryWork.WaitAsync();
+        try
+        {
+            if (_librarySession.Catalog is null) throw new InvalidOperationException("请先导入真实素材文件夹。");
+            using var image = await GetClipboardImageAsync();
+            var assets = _librarySession.Catalog.Assets;
+            return await Task.Run(() => _imageSearch.Search(image, assets));
+        }
+        finally { _libraryWork.Release(); }
+    }
+
+    private static async Task<Image> GetClipboardImageAsync()
+    {
+        var occupied = false;
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            try
+            {
+                if (Clipboard.ContainsImage() && Clipboard.GetImage() is { } image) return image;
+                occupied = false;
+            }
+            catch (ExternalException) { occupied = true; }
+            // Clipboard owners and history tools can briefly hold the clipboard after a copy.
+            // Yield on the UI context (STA); never move Clipboard APIs to Task.Run.
+            if (attempt < 3) await Task.Delay(75);
+        }
+        throw new InvalidOperationException(occupied ? "剪贴板正被其他程序占用，请稍后重试。"
+            : "剪贴板中没有图片。请先复制图片或截图，再执行此操作。");
+    }
+
+    private void ReportScanProgress(LibraryScanProgress progress)
+    {
+        if (_webView.IsDisposed || _webView.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        var message = JsonSerializer.Serialize(new
+        {
+            eventName = "scanProgress",
+            detail = new
+            {
+                progress.DirectoryCount,
+                progress.AssetCount,
+                progress.ErrorCount,
+                progress.CurrentFolder,
+            },
+        }, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+        _webView.CoreWebView2.PostWebMessageAsJson(message);
+    }
+
+    private bool LocateAsset(string assetId)
+    {
+        if (_options.LibraryTestRoot is null)
+        {
+            return ExplorerAssetLocator.Locate(_librarySession, assetId);
+        }
+
+        if (!_librarySession.TryGetAsset(assetId, out var asset)
+            || asset is null
+            || !File.Exists(asset.FullPath))
+        {
+            return false;
+        }
+
+        _lastAutomatedLocatedAssetId = assetId;
+        return true;
+    }
+
+    private bool TryServeCover(CoreWebView2 core, CoreWebView2WebResourceRequestedEventArgs args)
+    {
+        if (!TrustedContentPolicy.IsTrustedCoverResource(args.Request.Uri))
+        {
+            return false;
+        }
+
+        var assetId = new Uri(args.Request.Uri).AbsolutePath[1..];
+        if (!_librarySession.TryGetCover(assetId, out var coverPath) || coverPath is null)
+        {
+            args.Response = core.Environment.CreateWebResourceResponse(
+                Stream.Null,
+                404,
+                "Not Found",
+                "Content-Type: text/plain; charset=utf-8");
+            return true;
+        }
+
+        try
+        {
+            var stream = File.OpenRead(coverPath);
+            args.Response = core.Environment.CreateWebResourceResponse(
+                stream,
+                200,
+                "OK",
+                $"Content-Type: {CoverContentType(coverPath)}\r\nCache-Control: no-store");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            args.Response = core.Environment.CreateWebResourceResponse(
+                Stream.Null,
+                404,
+                "Not Found",
+                "Content-Type: text/plain; charset=utf-8");
+        }
+
+        return true;
+    }
+
+    private static string CoverContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch
+    {
+        ".png" => "image/png",
+        ".jpg" or ".jpeg" => "image/jpeg",
+        ".webp" => "image/webp",
+        ".bmp" => "image/bmp",
+        _ => "application/octet-stream",
+    };
 
     private async Task WaitForBridgeAsync()
     {
@@ -187,7 +446,7 @@ internal sealed class MainWindow : Form
                 // The host handshake alone does not prove the V2 UI rendered.
                 // Require actual masonry cards, search and sidebar before smoke-test success.
                 var screenReady = await _webView.CoreWebView2.ExecuteScriptAsync(
-                    "Boolean(document.querySelector('#search') && document.querySelector('#special-nav') && document.querySelectorAll('#assets article.asset').length >= 15)");
+                    "Boolean(document.querySelector('#app[data-ui-contract=\"issue-32\"]') && document.querySelector('#search') && document.querySelector('#special-nav') && document.querySelector('#inspector') && document.documentElement.dataset.libraryReady === 'true')");
                 if (screenReady == "true")
                 {
                     return;

@@ -9,8 +9,8 @@
     <PlatformTarget>x64</PlatformTarget>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <AssemblyName>AssetLibrary.V2</AssemblyName>
-    <ApplicationTitle>3D 素材管理器 V2 预览</ApplicationTitle>
-    <Version>2.0.0-preview.14</Version>
+    <ApplicationTitle>3D 素材管理器 V2</ApplicationTitle>
+    <Version>2.0.0-alpha.33.1</Version>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>

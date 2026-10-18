@@ -23,6 +23,13 @@ body{background:var(--page)}.wrap{width:100%;max-width:none;padding:8px}.app{bor
 #updateDialog h2{margin:0 0 14px;font-size:18px}#updateDialog p{font-size:13px;line-height:1.7;white-space:pre-line;overflow-wrap:anywhere}
 #updateDialog .row{margin-top:18px;display:flex;justify-content:flex-end;gap:10px}#updateDialog button:disabled{opacity:.4;cursor:not-allowed}
 @media(max-width:850px){.native-actions .mode{width:100%;text-align:left}.app.boardmode .assetgrid{columns:3}}@media(max-width:600px){.app.boardmode .assetgrid{columns:2}}
+.app.boardmode .assetgrid{position:relative;display:block;columns:auto;column-gap:normal}
+.app.boardmode .asset{position:absolute;display:block;margin:0;break-inside:auto}
+.app.boardmode .cover{height:auto;aspect-ratio:var(--ar)}
+.app.boardmode .cover img{object-fit:contain;transform:none}
+.asset,.inspectCover{user-select:none}.cover img,.inspectCover img{-webkit-user-drag:none}
+.app.gridmode .assetgrid{grid-template-columns:repeat(auto-fill,minmax(min(100%,var(--card-size,260px)),var(--card-size,260px)))}
+.app.listmode .cover{width:calc(var(--card-size,260px) * .55);min-height:calc(var(--card-size,260px) * .4)}
 </style>
 </head><body>
 

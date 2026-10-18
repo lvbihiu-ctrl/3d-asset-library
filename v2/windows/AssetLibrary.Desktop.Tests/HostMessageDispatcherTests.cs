@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AssetLibrary.Desktop.Bridge;
+using AssetLibrary.Desktop.Library;
 
 namespace AssetLibrary.Desktop.Tests;
 
@@ -74,6 +75,60 @@ public sealed class HostMessageDispatcherTests
         Assert.Equal("native_error", ErrorCode(response));
         Assert.DoesNotContain("private implementation detail", response.RootElement.GetRawText());
     }
+
+    [Fact]
+    public void NativeLibraryCapabilities_AreAdvertisedOnlyWhenHandlersExist()
+    {
+        var dispatcher = CreateNativeDispatcher();
+
+        using var response = JsonDocument.Parse(dispatcher.Dispatch("""
+            {"id":"request-5","action":"getHostInfo","payload":{}}
+            """));
+
+        var capabilities = response.RootElement.GetProperty("result").GetProperty("capabilities")
+            .EnumerateArray().Select(value => value.GetString()!).ToArray();
+        Assert.Equal(["getHostInfo", "importFolder", "locateAsset"], capabilities);
+    }
+
+    [Fact]
+    public async Task ImportFolder_DoesNotAcceptAPathFromThePage()
+    {
+        var dispatcher = CreateNativeDispatcher();
+
+        using var response = JsonDocument.Parse(await dispatcher.DispatchAsync("""
+            {"id":"request-6","action":"importFolder","payload":{"path":"D:\\private"}}
+            """));
+
+        Assert.False(response.RootElement.GetProperty("ok").GetBoolean());
+        Assert.Equal("invalid_payload", ErrorCode(response));
+    }
+
+    [Fact]
+    public void LocateAsset_AcceptsOnlyAValidatedAssetIdAndNeverAPath()
+    {
+        string? locatedId = null;
+        var dispatcher = new HostMessageDispatcher(
+            () => TestHost,
+            () => Task.FromResult(new ImportLibraryResult(true, null)),
+            id => { locatedId = id; return true; });
+        var validId = new string('a', 64);
+
+        using var accepted = JsonDocument.Parse(dispatcher.Dispatch(
+            $"{{\"id\":\"request-7\",\"action\":\"locateAsset\",\"payload\":{{\"assetId\":\"{validId}\"}}}}"));
+        using var rejected = JsonDocument.Parse(dispatcher.Dispatch("""
+            {"id":"request-8","action":"locateAsset","payload":{"assetId":"a","path":"D:\\private\\x.c4d"}}
+            """));
+
+        Assert.True(accepted.RootElement.GetProperty("ok").GetBoolean());
+        Assert.Equal(validId, locatedId);
+        Assert.False(rejected.RootElement.GetProperty("ok").GetBoolean());
+        Assert.Equal("invalid_payload", ErrorCode(rejected));
+    }
+
+    private static HostMessageDispatcher CreateNativeDispatcher() => new(
+        () => TestHost,
+        () => Task.FromResult(new ImportLibraryResult(true, null)),
+        _ => true);
 
     private JsonDocument Dispatch(string request) => JsonDocument.Parse(_dispatcher.Dispatch(request));
 

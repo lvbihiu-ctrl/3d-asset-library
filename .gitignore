@@ -84,3 +84,4 @@ desktop-updates/native/launcher/publish/
 credentials.*
 secrets.*
 !.env.example
+__pycache__/
