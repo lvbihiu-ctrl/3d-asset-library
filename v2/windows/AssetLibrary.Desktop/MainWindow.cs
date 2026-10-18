@@ -184,7 +184,14 @@ internal sealed class MainWindow : Form
             var state = JsonSerializer.Deserialize<string>(rawState);
             if (state == "connected")
             {
-                return;
+                // The host handshake alone does not prove the V2 UI rendered.
+                // Require actual masonry cards, search and sidebar before smoke-test success.
+                var screenReady = await _webView.CoreWebView2.ExecuteScriptAsync(
+                    "Boolean(document.querySelector('#search') && document.querySelector('#special-nav') && document.querySelectorAll('#assets article.asset').length >= 15)");
+                if (screenReady == "true")
+                {
+                    return;
+                }
             }
 
             if (state == "error")
